@@ -136,7 +136,7 @@ impl RustmoServer {
     ) -> Result<WrappedVirtualDevice, RustmoError> {
         self.internal_add_device(
             name,
-            IpAddr::V4(ip_address),
+            IpAddr::V4(self.ip_address),
             port,
             PollingDevice {
                 device: Box::new(virtual_device),
@@ -169,7 +169,7 @@ impl RustmoServer {
     ) -> Result<WrappedVirtualDevice, RustmoError> {
         self.internal_add_device(
             name,
-            IpAddr::V4(ip_address),
+            IpAddr::V4(self.ip_address),
             port,
             InstantOnDevice {
                 device: Box::new(virtual_device),
@@ -205,7 +205,7 @@ impl RustmoServer {
     {
         self.internal_add_device(
             name,
-            IpAddr::V4(ip_address),
+            IpAddr::V4(self.ip_address),
             port,
             FunctionalDevice {
                 turn_on,
@@ -242,7 +242,7 @@ impl RustmoServer {
     ) -> Result<WrappedVirtualDevice, RustmoError> {
         self.internal_add_device(
             name,
-            IpAddr::V4(ip_address),
+            IpAddr::V4(self.ip_address),
             port,
             CompositeDevice { devices },
         )
