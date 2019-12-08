@@ -31,7 +31,7 @@ impl std::convert::From<reqwest::Error> for VirtualDeviceError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VirtualDeviceState {
     /// the device is on
     On,
