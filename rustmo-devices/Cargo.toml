@@ -3,6 +3,12 @@ name = "rustmo-devices"
 version = "0.1.0"
 authors = ["Eric B. Ridge <eebbrr@gmail.com>"]
 edition = "2018"
+license = "MIT"
+description = "VirtualDevice implementations for Rustmo"
+homepage = "https://github.com/eeeebbbbrrrr/rustmo"
+documentation = "https://github.com/eeeebbbbrrrr/rustmo"
+repository = "https://github.com/eeeebbbbrrrr/rustmo"
+readme = "README.md"
 
 [dependencies]
 rustmo-server = {version = "*", path = "../rustmo-server" }

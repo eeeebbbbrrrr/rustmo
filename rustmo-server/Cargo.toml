@@ -3,8 +3,12 @@ name = "rustmo-server"
 version = "0.1.0"
 authors = ["Eric B. Ridge <eebbrr@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Talk to your code with Rustmo via Alexa"
+homepage = "https://github.com/eeeebbbbrrrr/rustmo"
+documentation = "https://github.com/eeeebbbbrrrr/rustmo"
+repository = "https://github.com/eeeebbbbrrrr/rustmo"
+readme = "../README.md"
 
 [dependencies]
 net2 = "0.2.33"
