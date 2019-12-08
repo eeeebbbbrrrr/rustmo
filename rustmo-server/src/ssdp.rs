@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -24,14 +24,10 @@ impl SsdpListener {
     pub(crate) fn listen(interface: Ipv4Addr, devices: Arc<Mutex<Vec<RustmoDevice>>>) -> Self {
         thread::spawn(move || {
             let mut buf = [0; 65535];
-            let socket = net2::UdpBuilder::new_v4()
-                .unwrap()
-                .reuse_address(true)
-                .unwrap()
-                .reuse_port(true)
-                .unwrap()
-                .bind(SocketAddr::new(IpAddr::V4(interface), 1900))
-                .unwrap();
+            let socket = net2::UdpBuilder::new_v4().unwrap()
+                .reuse_address(true).unwrap()
+                .reuse_port(true).unwrap()
+                .bind("0.0.0.0:1900").unwrap();
             socket
                 .join_multicast_v4(&Ipv4Addr::from_str("239.255.255.250").unwrap(), &interface)
                 .unwrap();
