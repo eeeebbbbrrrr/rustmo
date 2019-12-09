@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "rustmo-devices"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest 0.9.22 (registry+https://github.com/rust-lang/crates.io-index)",
