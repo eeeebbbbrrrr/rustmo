@@ -75,12 +75,12 @@ impl Device {
 
         let res = &mut [0 as u8; 32];
         let len = stream.read(res)?;
-        let str = CStr::from_bytes_with_nul(&res[..len + 1])?.to_string_lossy();
+        let str = CStr::from_bytes_with_nul(&res[..=len])?.to_string_lossy();
 
         if str.to_string().starts_with("@OK ") {
-            return Ok(VirtualDeviceState::On)
+            Ok(VirtualDeviceState::On)
         } else {
-            return Err(VirtualDeviceError(str.to_string()))
+            Err(VirtualDeviceError(str.to_string()))
         }
     }
 }
@@ -104,7 +104,7 @@ impl VirtualDevice for Device {
         stream.write_all("#QPW\r\n".as_ref())?;
         let res = &mut [0 as u8; 32];
         let len = stream.read(res)?;
-        let str = CStr::from_bytes_with_nul(&res[..len + 1])?.to_string_lossy();
+        let str = CStr::from_bytes_with_nul(&res[..=len])?.to_string_lossy();
 
         Ok(match str.to_string().as_str() {
             "@OK ON\r" => VirtualDeviceState::On,

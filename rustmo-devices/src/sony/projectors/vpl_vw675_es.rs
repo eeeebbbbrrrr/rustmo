@@ -45,12 +45,12 @@ impl Device {
         let _community: i32 = stream.read_i32::<BigEndian>()?;
         let success = stream.read_u8()?;
         let _command = stream.read_i16::<BigEndian>()?;
-        let len = stream.read_u8()? as usize;
+        let expected_len = stream.read_u8()? as usize;
         let data = &mut [0 as u8; 32];
-        stream.read(data)?;
+        let len = stream.read(data)?;
         let data = data.to_vec();
 
-        if success == 1 && len == 2 {
+        if success == 1 && expected_len == len && len == 2 {
             let mut cursor = Cursor::new(data);
             let status = cursor.read_i16::<BigEndian>()?;
             return match status {
@@ -74,10 +74,10 @@ impl Device {
         let mut bytes = vec![
             0x02 as u8, // version
             0x0a,       // category
-            'S' as u8,
-            'O' as u8,
-            'N' as u8,
-            'Y' as u8, // community
+            b'S',
+            b'O',
+            b'N',
+            b'Y', // community
             action,
             command_hi,
             command_lo,
