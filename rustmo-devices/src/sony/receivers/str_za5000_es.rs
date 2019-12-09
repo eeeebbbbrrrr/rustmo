@@ -26,6 +26,16 @@ struct VideoInputResponsePacket {
     value: String,
 }
 
+impl VideoInputResponsePacket {
+    fn unknown() -> Self {
+        VideoInputResponsePacket {
+            id: 0,
+            feature: "unknown".to_string(),
+            value: "unknown".to_string()
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct VideoInputResponse {
     #[serde(rename = "type")]
@@ -52,10 +62,10 @@ impl Device {
             .body("{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.input\"}]}")
             .send()?;
 
-        let response = response.text().unwrap();
-        let response: VideoInputResponse = serde_json::from_str(response.as_str()).unwrap();
+        let response = response.text()?;
+        let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
 
-        Ok(match response.packet.get(0).unwrap().value.as_str() {
+        Ok(match response.packet.get(0).unwrap_or(&VideoInputResponsePacket::unknown()).value.as_str() {
             "sat" => VideoInput::Sat,
             "stb" => VideoInput::Stb,
             "game" => VideoInput::Game,
@@ -140,10 +150,10 @@ impl Device {
             .body("{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.mute\"}]}")
             .send()?;
 
-        let response = response.text().unwrap();
-        let response: VideoInputResponse = serde_json::from_str(response.as_str()).unwrap();
+        let response = response.text()?;
+        let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
 
-        Ok(match response.packet.get(0).unwrap().value.as_str() {
+        Ok(match response.packet.get(0).unwrap_or(&VideoInputResponsePacket::unknown()).value.as_str() {
             "off" => VirtualDeviceState::Off,
             "on" => VirtualDeviceState::On,
             _ => VirtualDeviceState::Off,

@@ -991,11 +991,11 @@ dependencies = [
 
 [[package]]
 name = "rustmo-devices"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest 0.9.22 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustmo-server 0.1.0",
+ "rustmo-server 0.1.1",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde-xml-rs 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1004,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "rustmo-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "hyper 0.10.16 (registry+https://github.com/rust-lang/crates.io-index)",
  "net2 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
+use serde_json::Error;
 
 pub struct VirtualDeviceError(pub String);
 
@@ -27,6 +28,12 @@ impl std::convert::From<std::ffi::FromBytesWithNulError> for VirtualDeviceError 
 
 impl std::convert::From<reqwest::Error> for VirtualDeviceError {
     fn from(e: reqwest::Error) -> Self {
+        VirtualDeviceError::from(e.to_string())
+    }
+}
+
+impl std::convert::From<serde_json::error::Error> for VirtualDeviceError {
+    fn from(e: Error) -> Self {
         VirtualDeviceError::from(e.to_string())
     }
 }
