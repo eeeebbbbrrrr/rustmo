@@ -9,7 +9,7 @@ pub struct Device {
     ip_address: IpAddr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum VideoInput {
     Sat,
     Stb,
@@ -65,7 +65,7 @@ impl Device {
         })
     }
 
-    pub fn set_video_input(&mut self, input: &VideoInput) -> Result<(), VirtualDeviceError> {
+    pub fn set_video_input(&mut self, input: &VideoInput) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.is_off() {
             return Err(VirtualDeviceError::new("Receiver is turned off"));
         }
@@ -86,37 +86,41 @@ impl Device {
             .body(body)
             .send()?;
 
-        Ok(())
+        if self.get_video_input()?.eq(input) {
+            Ok(VirtualDeviceState::On)
+        } else {
+            Err(VirtualDeviceError("Couldn't change state".to_string()))
+        }
     }
 
-    pub fn volume_up(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn volume_up(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let client = reqwest::ClientBuilder::new().timeout(TIMEOUT).build()?;
 
         client.post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
             .body("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.volumeup\",\"value\":\"main\"}]}")
             .send()?;
 
-        Ok(())
+        Ok(VirtualDeviceState::On)
     }
 
-    pub fn volume_down(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn volume_down(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let client = reqwest::ClientBuilder::new().timeout(TIMEOUT).build()?;
 
         client.post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
             .body("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.volumedown\",\"value\":\"main\"}]}")
             .send()?;
 
-        Ok(())
+        Ok(VirtualDeviceState::On)
     }
 
-    pub fn toggle_mute(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn toggle_mute(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let client = reqwest::ClientBuilder::new().timeout(TIMEOUT).build()?;
 
         client.post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
             .body("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.muting\",\"value\":\"main\"}]}")
             .send()?;
 
-        Ok(())
+        self.check_is_muted()
     }
 
     fn is_off(&mut self) -> bool {
@@ -125,30 +129,25 @@ impl Device {
             .eq(&VirtualDeviceState::Off)
     }
 
-    fn is_muted(&mut self) -> bool {
+    pub fn check_is_muted(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.is_off() {
-            return false;
+            return Ok(VirtualDeviceState::Off);
         }
 
-        let client = reqwest::ClientBuilder::new()
-            .timeout(TIMEOUT)
-            .build()
-            .unwrap();
+        let client = reqwest::ClientBuilder::new().timeout(TIMEOUT).build()?;
 
-        let mut response = client
-            .post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        let mut response = client.post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
             .body("{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.mute\"}]}")
-            .send()
-            .unwrap();
+            .send()?;
 
         let response = response.text().unwrap();
         let response: VideoInputResponse = serde_json::from_str(response.as_str()).unwrap();
 
-        match response.packet.get(0).unwrap().value.as_str() {
-            "off" => false,
-            "on" => true,
-            _ => false,
-        }
+        Ok(match response.packet.get(0).unwrap().value.as_str() {
+            "off" => VirtualDeviceState::Off,
+            "on" => VirtualDeviceState::On,
+            _ => VirtualDeviceState::Off,
+        })
     }
 }
 

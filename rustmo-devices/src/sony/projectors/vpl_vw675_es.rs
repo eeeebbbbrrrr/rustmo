@@ -12,8 +12,8 @@ pub struct Device {
     ip_address: IpAddr,
 }
 
-#[derive(Debug)]
-enum PowerStatus {
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowerStatus {
     // 0x0000
     Standby,
 
@@ -33,7 +33,7 @@ impl Device {
         Device { ip_address }
     }
 
-    fn get_power_status(&self) -> Result<PowerStatus, VirtualDeviceError> {
+    pub fn get_power_status(&self) -> Result<PowerStatus, VirtualDeviceError> {
         let mut stream =
             TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 53484), TIMEOUT)?;
         stream.write_all(
