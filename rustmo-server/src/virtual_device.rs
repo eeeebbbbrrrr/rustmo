@@ -127,9 +127,8 @@ pub(crate) mod wrappers {
             let result = self.device.check_is_on();
 
             if self.instant {
-                match result.unwrap_or(VirtualDeviceState::Off) {
-                    VirtualDeviceState::On => self.instant = false,
-                    _ => {}
+                if let VirtualDeviceState::On = result.unwrap_or(VirtualDeviceState::Off) {
+                    self.instant = false;
                 }
                 return Ok(VirtualDeviceState::On);
             }
@@ -212,11 +211,8 @@ pub(crate) mod wrappers {
         fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.par_iter_mut().for_each(|device| {
                 let mut device = device.lock().unwrap();
-                match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    VirtualDeviceState::Off => {
-                        device.turn_on().ok().unwrap();
-                    }
-                    _ => {}
+                if let VirtualDeviceState::Off = device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
+                    device.turn_on().ok().unwrap();
                 }
             });
 
@@ -226,11 +222,8 @@ pub(crate) mod wrappers {
         fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.par_iter_mut().for_each(|device| {
                 let mut device = device.lock().unwrap();
-                match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    VirtualDeviceState::On => {
-                        device.turn_off().ok().unwrap();
-                    }
-                    _ => {}
+                if let VirtualDeviceState::On = device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
+                    device.turn_off().ok().unwrap();
                 }
             });
 

@@ -53,7 +53,8 @@ impl Device {
         if success == 1 && expected_len == len && len == 2 {
             let mut cursor = Cursor::new(data);
             let status = cursor.read_i16::<BigEndian>()?;
-            return match status {
+
+            match status {
                 0x0000 => Ok(PowerStatus::Standby),
                 0x0001 | 0x0002 => Ok(PowerStatus::Warming),
                 0x0003 => Ok(PowerStatus::PowerOn),
@@ -62,12 +63,12 @@ impl Device {
                     "Invalid status code({:X}) received from  Vw675Es",
                     status
                 ))),
-            };
+            }
+        } else {
+            Err(VirtualDeviceError::new(
+                "Coudln't determine power status for Vw675Es",
+            ))
         }
-
-        Err(VirtualDeviceError::new(
-            "Coudln't determine power status for Vw675Es",
-        ))
     }
 
     fn make_command_bytes(action: u8, command_hi: u8, command_lo: u8, data: &[u8]) -> Vec<u8> {

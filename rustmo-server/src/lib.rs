@@ -46,7 +46,6 @@ impl RustmoDevice {
             ip_address,
             port,
             uuid: Uuid::from_slice(bytes.as_slice())
-                .ok()
                 .expect("failed to generate UUID"),
             virtual_device: Arc::new(Mutex::new(Box::new(virtual_device))),
         };
