@@ -1,6 +1,6 @@
+use serde_json::Error;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
-use serde_json::Error;
 
 pub struct VirtualDeviceError(pub String);
 
@@ -210,9 +210,12 @@ pub(crate) mod wrappers {
     impl VirtualDevice for CompositeDevice {
         fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.par_iter_mut().for_each(|device| {
-                let mut device = device.lock().unwrap();
-                if let VirtualDeviceState::Off = device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    device.turn_on().ok().unwrap();
+                if let Ok(mut device) = device.lock() {
+                    if device.check_is_on().unwrap_or(VirtualDeviceState::Off)
+                        == VirtualDeviceState::Off
+                    {
+                        device.turn_on().ok().unwrap();
+                    }
                 }
             });
 
@@ -221,9 +224,12 @@ pub(crate) mod wrappers {
 
         fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.par_iter_mut().for_each(|device| {
-                let mut device = device.lock().unwrap();
-                if let VirtualDeviceState::On = device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    device.turn_off().ok().unwrap();
+                if let Ok(mut device) = device.lock() {
+                    if device.check_is_on().unwrap_or(VirtualDeviceState::Off)
+                        == VirtualDeviceState::On
+                    {
+                        device.turn_off().ok().unwrap();
+                    }
                 }
             });
 
@@ -233,13 +239,14 @@ pub(crate) mod wrappers {
         fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             let on = AtomicBool::new(true);
             self.devices.par_iter_mut().for_each(|device| {
-                let mut device = device.lock().unwrap();
-                match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    VirtualDeviceState::On => {
-                        on.compare_and_swap(true, true, Ordering::SeqCst);
-                    }
-                    VirtualDeviceState::Off => {
-                        on.store(false, Ordering::SeqCst);
+                if let Ok(mut device) = device.lock() {
+                    match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
+                        VirtualDeviceState::On => {
+                            on.compare_and_swap(true, true, Ordering::SeqCst);
+                        }
+                        VirtualDeviceState::Off => {
+                            on.store(false, Ordering::SeqCst);
+                        }
                     }
                 }
             });
