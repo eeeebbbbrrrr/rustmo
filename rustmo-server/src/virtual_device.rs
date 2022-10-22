@@ -2,6 +2,7 @@ use serde_json::Error;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug)]
 pub struct VirtualDeviceError(pub String);
 
 impl VirtualDeviceError {
