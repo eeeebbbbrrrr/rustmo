@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use byteorder::{BigEndian, ReadBytesExt};
 
@@ -64,7 +64,7 @@ impl Device {
         stream.write_all(&Device::make_command_bytes(0x01, hi, lo, &[]))?;
         stream.flush()?;
         match Device::read_response(&mut stream) {
-            Ok((len, data)) => Ok(data.into_inner()),
+            Ok((_len, data)) => Ok(data.into_inner()),
             Err(e) => Err(e),
         }
     }
@@ -74,7 +74,7 @@ impl Device {
         stream.write_all(&Device::make_command_bytes(0x00, hi, lo, data))?;
         stream.flush()?;
         match Device::read_response(&mut stream) {
-            Ok((len, data)) => Ok(data.into_inner()),
+            Ok((_len, data)) => Ok(data.into_inner()),
             Err(e) => Err(e),
         }
     }
@@ -116,7 +116,7 @@ impl Device {
     }
 
     #[track_caller]
-    pub fn lens_shift_up(&self, many: u16) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift_up(&self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x72, &[0x00, 00]))?;
         Ok(stream.flush()?)

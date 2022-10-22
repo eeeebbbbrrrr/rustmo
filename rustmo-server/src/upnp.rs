@@ -5,8 +5,8 @@ use hyper::server::{Fresh, Handler, Request, Response};
 use regex::Regex;
 use serde_xml_rs::from_reader;
 
-use crate::RustmoDevice;
 use crate::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
+use crate::RustmoDevice;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BinaryState {
@@ -15,6 +15,7 @@ pub(crate) struct BinaryState {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct UpnpBody {
     #[serde(rename = "GetBinaryState")]
     pub(crate) get_binary_state: Option<BinaryState>,
@@ -197,8 +198,8 @@ impl DeviceHttpServerHandler {
             device_name = self.device.name,
             uuid = self.device.uuid
         )
-            .as_bytes()
-            .to_vec()
+        .as_bytes()
+        .to_vec()
     }
 
     fn handle_eventservice(&self) -> Vec<u8> {

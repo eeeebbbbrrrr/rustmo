@@ -243,7 +243,8 @@ pub(crate) mod wrappers {
                 if let Ok(mut device) = device.lock() {
                     match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
                         VirtualDeviceState::On => {
-                            on.compare_and_swap(true, true, Ordering::SeqCst);
+                            on.compare_exchange(true, true, Ordering::SeqCst, Ordering::SeqCst)
+                                .ok();
                         }
                         VirtualDeviceState::Off => {
                             on.store(false, Ordering::SeqCst);

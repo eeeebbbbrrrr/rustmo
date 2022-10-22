@@ -21,17 +21,17 @@ pub enum VideoInput {
 
 #[derive(Deserialize, Debug)]
 struct VideoInputResponsePacket {
-    id: i32,
-    feature: String,
+    _id: i32,
+    _feature: String,
     value: String,
 }
 
 impl VideoInputResponsePacket {
     fn unknown() -> Self {
         VideoInputResponsePacket {
-            id: 0,
-            feature: "unknown".to_string(),
-            value: "unknown".to_string()
+            _id: 0,
+            _feature: "unknown".to_string(),
+            value: "unknown".to_string(),
         }
     }
 }
@@ -39,9 +39,9 @@ impl VideoInputResponsePacket {
 #[derive(Deserialize, Debug)]
 struct VideoInputResponse {
     #[serde(rename = "type")]
-    ttype: String,
+    _ttype: String,
     packet: Vec<VideoInputResponsePacket>,
-    event_available: Vec<u8>,
+    _event_available: Vec<u8>,
 }
 
 /// https://www.sony.com/electronics/av-receivers/str-za5000es
@@ -65,17 +65,28 @@ impl Device {
         let response = response.text()?;
         let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
 
-        Ok(match response.packet.get(0).unwrap_or(&VideoInputResponsePacket::unknown()).value.as_str() {
-            "sat" => VideoInput::Sat,
-            "stb" => VideoInput::Stb,
-            "game" => VideoInput::Game,
-            "bd" => VideoInput::Bd,
-            "sacd" => VideoInput::Sacd,
-            _ => VideoInput::Unknown,
-        })
+        Ok(
+            match response
+                .packet
+                .get(0)
+                .unwrap_or(&VideoInputResponsePacket::unknown())
+                .value
+                .as_str()
+            {
+                "sat" => VideoInput::Sat,
+                "stb" => VideoInput::Stb,
+                "game" => VideoInput::Game,
+                "bd" => VideoInput::Bd,
+                "sacd" => VideoInput::Sacd,
+                _ => VideoInput::Unknown,
+            },
+        )
     }
 
-    pub fn set_video_input(&mut self, input: &VideoInput) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn set_video_input(
+        &mut self,
+        input: &VideoInput,
+    ) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.is_off() {
             return Err(VirtualDeviceError::new("Receiver is turned off"));
         }
@@ -146,18 +157,27 @@ impl Device {
 
         let client = reqwest::ClientBuilder::new().timeout(TIMEOUT).build()?;
 
-        let mut response = client.post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        let mut response = client
+            .post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
             .body("{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.mute\"}]}")
             .send()?;
 
         let response = response.text()?;
         let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
 
-        Ok(match response.packet.get(0).unwrap_or(&VideoInputResponsePacket::unknown()).value.as_str() {
-            "off" => VirtualDeviceState::Off,
-            "on" => VirtualDeviceState::On,
-            _ => VirtualDeviceState::Off,
-        })
+        Ok(
+            match response
+                .packet
+                .get(0)
+                .unwrap_or(&VideoInputResponsePacket::unknown())
+                .value
+                .as_str()
+            {
+                "off" => VirtualDeviceState::Off,
+                "on" => VirtualDeviceState::On,
+                _ => VirtualDeviceState::Off,
+            },
+        )
     }
 }
 
