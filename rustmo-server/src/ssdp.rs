@@ -1,13 +1,14 @@
+use parking_lot::Mutex;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use net2::unix::UnixUdpBuilderExt;
 
-use crate::RustmoDevice;
+use crate::{RustmoDevice, VirtualDevice, VirtualDevicesList};
 
-pub(crate) struct SsdpListener();
+pub(crate) struct SsdpListener;
 
 ///
 /// `SsdpListener` joins a IPV4 multicast on `239.255.255.250` (as perscribed by the SSDP protocol spec)
@@ -21,13 +22,17 @@ impl SsdpListener {
     /// `devices` is guarded by a Mutex so that users of this listener can add/remove devices
     /// while we're listening
     ///
-    pub(crate) fn listen(interface: Ipv4Addr, devices: Arc<Mutex<Vec<RustmoDevice>>>) -> Self {
+    pub(crate) fn listen(interface: Ipv4Addr, devices: VirtualDevicesList) -> Self {
         thread::spawn(move || {
             let mut buf = [0; 65535];
-            let socket = net2::UdpBuilder::new_v4().unwrap()
-                .reuse_address(true).unwrap()
-                .reuse_port(true).unwrap()
-                .bind("0.0.0.0:1900").unwrap();
+            let socket = net2::UdpBuilder::new_v4()
+                .unwrap()
+                .reuse_address(true)
+                .unwrap()
+                .reuse_port(true)
+                .unwrap()
+                .bind("0.0.0.0:1900")
+                .unwrap();
             socket
                 .join_multicast_v4(&Ipv4Addr::from_str("239.255.255.250").unwrap(), &interface)
                 .unwrap();
@@ -38,10 +43,11 @@ impl SsdpListener {
                     .expect("problem receiving data while listening");
                 let dgram = String::from_utf8_lossy(&buf[..len]).to_string();
 
+                // eprintln!("DISCOVERY FROM: {}:{}", src.ip(), src.port());
                 if SsdpListener::is_discovery_request(dgram) {
                     // someone wants to know what devices we have
-                    for device in devices.lock().unwrap().iter() {
-                        println!("DISCOVERED: {} by {}", device.name, src.ip());
+                    for device in devices.lock().iter() {
+                        // println!("DISCOVERED: {} by {}", device.name, src.ip());
                         socket
                             .send_to(
                                 SsdpListener::build_discovery_response(device).as_bytes(),
@@ -53,10 +59,10 @@ impl SsdpListener {
             }
         });
 
-        SsdpListener()
+        SsdpListener
     }
 
-    fn build_discovery_response(device: &RustmoDevice) -> String {
+    fn build_discovery_response(device: &RustmoDevice<Box<dyn VirtualDevice>>) -> String {
         let mut response = String::new();
         response.push_str("HTTP/1.1 200 OK\r\n");
         response.push_str("CACHE-CONTROL: max-age=86400\r\n");
@@ -81,7 +87,6 @@ impl SsdpListener {
 
     fn is_discovery_request(dgram: String) -> bool {
         let dgram = dgram.to_lowercase();
-
         // NOTE:  make sure these patterns are all lowercase
         dgram.contains("man: \"ssdp:discover\"")
             && (dgram.contains("st: urn:belkin:device:**")

@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::io::Read;
 
 use hyper::server::{Fresh, Handler, Request, Response};
+use parking_lot::MutexGuard;
 use regex::Regex;
 use serde_xml_rs::from_reader;
 
@@ -30,36 +31,37 @@ pub(crate) struct UpnpEnvelope {
     pub(crate) body: UpnpBody,
 }
 
-pub(crate) struct DeviceHttpServerHandler {
-    device: RustmoDevice,
+pub(crate) struct DeviceHttpServerHandler<T: VirtualDevice> {
+    device: RustmoDevice<T>,
 }
 
-unsafe impl Sync for DeviceHttpServerHandler {}
+unsafe impl<T: VirtualDevice> Sync for DeviceHttpServerHandler<T> {}
+unsafe impl<T: VirtualDevice> Send for DeviceHttpServerHandler<T> {}
 
-unsafe impl Send for DeviceHttpServerHandler {}
-
-impl Handler for DeviceHttpServerHandler {
+impl<T: VirtualDevice> Handler for DeviceHttpServerHandler<T> {
     fn handle<'r, 'k>(&'r self, mut request: Request<'r, 'k>, mut response: Response<'r, Fresh>) {
         println!(
-            "REQUEST: http://{}{} from {}",
+            "REQUEST: http://{}:{}{} from {}",
             self.device.ip_address.to_string(),
+            self.device.port,
             request.uri.to_string(),
             request.remote_addr.to_string()
         );
-        let body = match request.uri.to_string().as_str() {
-            "/setup.xml" => Some(self.handle_setup()),
-            "/eventservice.xml" => Some(self.handle_eventservice()),
-            "/metainfoservice.xml" => Some(self.handle_metainfoservice()),
-            "/upnp/control/basicevent1" => Some(self.handle_basicevent(
-                request.borrow_mut(),
-                &mut self.device.virtual_device.lock().unwrap(),
-            )),
-            _ => {
-                println!("Unrecognized request: {:?}", request.uri);
-                *response.status_mut() = hyper::status::StatusCode::NotFound;
-                None
-            }
-        };
+        let body =
+            match request.uri.to_string().as_str() {
+                "/setup.xml" => Some(self.handle_setup()),
+                "/eventservice.xml" => Some(self.handle_eventservice()),
+                "/metainfoservice.xml" => Some(self.handle_metainfoservice()),
+                "/upnp/control/basicevent1" => Some(self.handle_basicevent(
+                    request.borrow_mut(),
+                    &mut self.device.virtual_device.lock(),
+                )),
+                _ => {
+                    println!("Unrecognized request: {:?}", request.uri);
+                    *response.status_mut() = hyper::status::StatusCode::NotFound;
+                    None
+                }
+            };
 
         if let Some(data) = body {
             *response.status_mut() = hyper::status::StatusCode::Ok;
@@ -71,15 +73,15 @@ impl Handler for DeviceHttpServerHandler {
     }
 }
 
-impl DeviceHttpServerHandler {
-    pub(crate) fn new(device: RustmoDevice) -> Self {
+impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
+    pub(crate) fn new(device: RustmoDevice<T>) -> Self {
         DeviceHttpServerHandler { device }
     }
 
     fn handle_basicevent<'r, 'b>(
         &self,
         request: &mut Request<'r, 'b>,
-        virtual_device: &mut Box<dyn VirtualDevice>,
+        virtual_device: &mut MutexGuard<T>,
     ) -> Vec<u8> {
         let re = Regex::new("^\".*[#](.*)\"$").unwrap();
         let action =
@@ -142,7 +144,7 @@ impl DeviceHttpServerHandler {
         };
 
         match on_off {
-            Ok(state) => DeviceHttpServerHandler::make_basicevent_response(state, get_or_set),
+            Ok(state) => DeviceHttpServerHandler::<T>::make_basicevent_response(state, get_or_set),
             Err(e) => {
                 println!("ERROR:  Problem with {}: {}", self.device.name, e.0);
                 return vec![];
