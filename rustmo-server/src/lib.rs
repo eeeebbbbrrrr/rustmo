@@ -75,7 +75,13 @@ impl<T: VirtualDevice> RustmoDevice<T> {
 
         let cloned = device.clone();
         thread::spawn(move || {
-            let server = hyper::Server::http(SocketAddr::new(ip_address, port)).unwrap();
+            let server = match hyper::Server::http(SocketAddr::new(ip_address, port)) {
+                Ok(server) => server,
+                Err(e) => panic!(
+                    "ERROR STARTING DEVICE SERVER:  ip={}, port={}, e={}",
+                    ip_address, port, e
+                ),
+            };
             server.handle(DeviceHttpServerHandler::new(cloned)).unwrap();
         });
 
@@ -97,6 +103,7 @@ impl<T: VirtualDevice> RustmoDevice<T> {
 ///
 pub struct RustmoServer {
     devices: VirtualDevicesList,
+    next_port: u16,
     ip_address: Ipv4Addr,
     ssdp_listener: SsdpListener,
 }
@@ -105,7 +112,6 @@ pub type VirtualDevicesList = Arc<Mutex<Vec<RustmoDevice<Box<dyn VirtualDevice>>
 
 #[derive(Debug)]
 pub enum RustmoError {
-    DeviceAlreadyExistsOnPort(u16),
     DeviceAlreadyExistsByName(String),
 }
 
@@ -121,11 +127,12 @@ impl RustmoServer {
     ///
     /// Create a new `RustmoServer` and listen for SSDP requests on the specified network interface
     ///
-    pub fn new(interface: Ipv4Addr) -> Self {
+    pub fn new(interface: Ipv4Addr, starting_port: u16) -> Self {
         let devices: VirtualDevicesList = Arc::new(Mutex::new(Vec::new()));
         RustmoServer {
             devices: devices.clone(),
             ip_address: interface,
+            next_port: starting_port,
             ssdp_listener: SsdpListener::listen(interface, devices),
         }
     }
@@ -140,11 +147,10 @@ impl RustmoServer {
     pub fn add_device<T: VirtualDevice, S: Into<String>>(
         &mut self,
         name: S,
-        port: u16,
         virtual_device: T,
     ) -> Result<WrappedVirtualDevice<T>, RustmoError> {
         // let virtual_device: Box<dyn VirtualDevice> = Box::new(virtual_device);
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), port, virtual_device)
+        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
     }
 
     ///
@@ -163,13 +169,12 @@ impl RustmoServer {
     pub fn add_polling_device<T: VirtualDevice, S: Into<String>>(
         &mut self,
         name: S,
-        port: u16,
         virtual_device: T,
     ) -> Result<WrappedVirtualDevice<PollingDevice<T>>, RustmoError> {
         let virtual_device = PollingDevice {
             device: virtual_device,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), port, virtual_device)
+        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
     }
 
     ///
@@ -192,14 +197,13 @@ impl RustmoServer {
     pub fn add_instant_on_device<T: VirtualDevice, S: Into<String>>(
         &mut self,
         name: S,
-        port: u16,
         virtual_device: T,
     ) -> Result<WrappedVirtualDevice<InstantOnDevice<T>>, RustmoError> {
         let virtual_device = InstantOnDevice {
             device: virtual_device,
             believed_on: false,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), port, virtual_device)
+        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
     }
 
     ///
@@ -216,7 +220,6 @@ impl RustmoServer {
     pub fn add_functional_device<TurnOn, TurnOff, CheckIsOn>(
         &mut self,
         name: &str,
-        port: u16,
         turn_on: TurnOn,
         turn_off: TurnOff,
         check_is_on: CheckIsOn,
@@ -232,7 +235,7 @@ impl RustmoServer {
             turn_off,
             check_is_on,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), port, virtual_device)
+        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
     }
 
     ///
@@ -257,34 +260,32 @@ impl RustmoServer {
     pub fn add_device_group(
         &mut self,
         name: &str,
-        port: u16,
         devices: Vec<WrappedVirtualDevice<Box<dyn VirtualDevice>>>,
     ) -> Result<WrappedVirtualDevice<CompositeDevice<Box<dyn VirtualDevice>>>, RustmoError> {
         let virtual_device = CompositeDevice {
             devices,
             __marker: PhantomData::default(),
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), port, virtual_device)
+        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
     }
 
     fn internal_add_device<T: VirtualDevice, S: Into<String>>(
         &mut self,
         name: S,
         ip_address: IpAddr,
-        port: u16,
         virtual_device: T,
     ) -> Result<WrappedVirtualDevice<T>, RustmoError> {
         let name = name.into();
         let mut device_list = self.devices.lock();
         for existing_device in device_list.iter() {
-            if existing_device.port == port {
-                return Err(RustmoError::DeviceAlreadyExistsOnPort(port));
-            } else if existing_device.name.to_lowercase().eq(&name.to_lowercase()) {
+            if existing_device.name.to_lowercase().eq(&name.to_lowercase()) {
                 return Err(RustmoError::DeviceAlreadyExistsByName(name.to_string()));
             }
         }
 
-        let device = RustmoDevice::new(name, ip_address, port, virtual_device);
+        let device = RustmoDevice::new(name, ip_address, self.next_port, virtual_device);
+        self.next_port += 1;
+
         device_list.push(RustmoDevice {
             name: device.name.clone(),
             ip_address: device.ip_address.clone(),

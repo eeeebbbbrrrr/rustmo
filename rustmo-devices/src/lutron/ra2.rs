@@ -4,9 +4,11 @@ use serde::de::{Error, Unexpected, Visitor};
 use serde::Deserializer;
 use std::fmt::Formatter;
 use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 use std::time::Duration;
 use telnet::Event;
 
+#[derive(Debug, Clone)]
 pub struct Ra2MainRepeater {
     ip: IpAddr,
     username: String,
@@ -49,6 +51,9 @@ pub struct DealerInformation {
 
 #[derive(Debug, Deserialize)]
 pub struct Project {
+    #[serde(skip)]
+    #[serde(default)]
+    ra2: Option<Ra2MainRepeater>,
     #[serde(rename = "ProjectName")]
     project_name: ProjectName,
     #[serde(rename = "Dealer")]
@@ -220,13 +225,26 @@ impl Ra2MainRepeater {
 
     pub fn describe(&mut self) -> Result<Project, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.username, &self.password)?;
-        // let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
-        let xml = std::fs::read_to_string("project.xml")?;
-        Ok(serde_xml_rs::from_str::<Project>(&xml)?)
+        let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
+        let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
+        project.ra2 = Some(self.clone());
+        Ok(project)
     }
 
-    pub fn into_iter(mut self) -> Result<impl Iterator<Item = Device>, VirtualDeviceError> {
-        let project = self.describe()?;
+    pub fn describe_from_file<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<Project, VirtualDeviceError> {
+        let xml = std::fs::read_to_string(path.as_ref())?;
+        let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
+        project.ra2 = Some(self.clone());
+        Ok(project)
+    }
+}
+
+impl Project {
+    pub fn into_iter(mut self) -> impl Iterator<Item = Device> {
+        let project = self;
         let mut devices = Vec::new();
 
         fn find_output(
@@ -252,13 +270,14 @@ impl Ra2MainRepeater {
             }
         }
 
+        let ra2 = project.ra2.unwrap();
         find_output(
-            &self,
+            &ra2,
             &project.areas.children.first().unwrap().areas,
             &mut devices,
             Default::default(),
         );
-        Ok(devices.into_iter())
+        devices.into_iter()
     }
 }
 
