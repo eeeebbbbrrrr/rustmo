@@ -4,6 +4,7 @@ use serde::de::{Error, Unexpected, Visitor};
 use serde::Deserializer;
 use std::fmt::Formatter;
 use std::net::{IpAddr, SocketAddr};
+use std::panic::catch_unwind;
 use std::path::Path;
 use std::time::Duration;
 use telnet::Event;
@@ -15,6 +16,7 @@ pub struct Ra2MainRepeater {
     password: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct Device {
     ip: IpAddr,
     uid: String,
@@ -298,6 +300,16 @@ impl Device {
         }
     }
 
+    pub fn copy(&self) -> Self {
+        Device {
+            ip: self.ip.clone(),
+            uid: self.uid.clone(),
+            upw: self.upw.clone(),
+            name: self.name.clone(),
+            id: self.id,
+        }
+    }
+
     pub fn output_set(&mut self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let response = send_command(
@@ -311,21 +323,39 @@ impl Device {
     pub fn output_get(&mut self) -> Result<f32, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let response = send_command(&mut telnet, &format!("?OUTPUT,{},1", self.id))?
-            .join("")
-            .trim()
-            .to_string();
+            .into_iter()
+            .filter(|line| line.starts_with(&format!("~OUTPUT,{}", self.id)))
+            .map(|line| line.trim().to_string())
+            .collect::<String>();
 
-        eprintln!("LUTRON RESPONSE: {}", response);
-        let mut parts = response.split(',');
-        let _command = parts.next().unwrap();
-        let _id = parts.next().unwrap();
-        let _action = parts.next().unwrap();
-        let percent = parts.next().unwrap();
-        Ok(percent.parse()?)
+        eprintln!("LUTRON OUTPUT RESPONSE for {}: /{}/", self.id, response);
+        if response.is_empty() {
+            return Err(VirtualDeviceError::new("empty response from lutron"));
+        }
+
+        match catch_unwind(|| {
+            eprintln!("LUTRON RESPONSE: /{}/", response);
+            let mut parts = response.split(',');
+            let _command = parts.next().unwrap();
+            let _id = parts.next().unwrap();
+            let _action = parts.next().unwrap();
+            let percent = parts.next().unwrap();
+            percent.parse()
+        }) {
+            Ok(percent) => Ok(percent?),
+            Err(e) => {
+                eprintln!("OUTPUT_GET ERROR: {:?}", e);
+                Err(VirtualDeviceError::from(format!("{:?}", e)))
+            }
+        }
     }
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
     }
 }
 
