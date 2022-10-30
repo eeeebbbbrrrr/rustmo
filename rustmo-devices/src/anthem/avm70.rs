@@ -65,10 +65,10 @@ impl Device {
 
     pub fn set_volume_percent(&mut self, vol: usize) -> Result<(f32, usize), VirtualDeviceError> {
         let mut socket = self.connect()?;
-        let dcbl = self
-            .send_command_with_socket(&mut socket, &format!("Z1PVOL{};", vol), Some("Z1VOL"))?
+        let pct = self
+            .send_command_with_socket(&mut socket, &format!("Z1PVOL{};", vol), Some("Z1PVOL"))?
             .parse()?;
-        let pct = Self::validate_response(&mut socket, Some("Z1PVOL"))?.parse()?;
+        let dcbl = Self::validate_response(&mut socket, Some("Z1VOL"))?.parse()?;
         Ok((dcbl, pct))
     }
 
@@ -115,6 +115,7 @@ impl Device {
         command: B,
         expected: Option<&str>,
     ) -> Result<String, VirtualDeviceError> {
+        eprintln!("WRITING: {}", String::from_utf8_lossy(command.as_ref()));
         let bytes = command.as_ref();
         if bytes[bytes.len() - 1] != b';' {
             return Err(VirtualDeviceError::from(format!(
@@ -123,6 +124,7 @@ impl Device {
             )));
         }
         socket.0.write_all(bytes)?;
+        socket.0.flush()?;
         Self::validate_response(socket, expected)
     }
 
@@ -130,9 +132,13 @@ impl Device {
         socket: &mut MySocket,
         expected: Option<&str>,
     ) -> Result<String, VirtualDeviceError> {
+        if expected.is_none() {
+            return Ok(String::new());
+        }
         loop {
             let buf = Self::read_response(socket)?;
             let response = String::from_utf8_lossy(&buf).to_string();
+            eprintln!("AVM RESPONSE: /{}/", response);
             let mut retries = 0;
             return match expected {
                 Some(expected) if response.starts_with(expected) => {

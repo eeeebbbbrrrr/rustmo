@@ -1,5 +1,5 @@
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::process::Command;
 
 #[derive(Clone)]
@@ -60,8 +60,8 @@ impl Device {
         for line in self.exec(vec!["app_list"])?.split(", ") {
             let map = Self::parse_map(line, "\n");
             if let Some(app) = map.get("App") {
-                if let Some((name, bundle_id)) = Self::parse_app_tuple(app) {
-                    apps.push((name, bundle_id));
+                if let Some(a) = Self::parse_app_tuple(app) {
+                    apps.push(a);
                 }
             }
         }
@@ -140,7 +140,7 @@ impl Device {
         self.exec(vec!["skip_forward"]).map(|_| ())
     }
 
-    pub fn playing(&mut self) -> Result<HashMap<String, String>, VirtualDeviceError> {
+    pub fn playing(&mut self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
         Ok(Self::parse_map(&self.exec(vec!["playing"])?, "\n"))
     }
 
@@ -151,16 +151,16 @@ impl Device {
     fn parse_app_tuple(app: &String) -> Option<(String, String)> {
         if let Some((name, bundle_id)) = app.split_once(" (") {
             Some((
-                name.trim().to_string(),
                 bundle_id.trim_matches(')').to_string(),
+                name.trim().to_string(),
             ))
         } else {
             None
         }
     }
 
-    fn parse_map(input: &str, line_sep: &str) -> HashMap<String, String> {
-        let mut map = HashMap::new();
+    fn parse_map(input: &str, line_sep: &str) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
         for line in input.split(line_sep) {
             match line.split_once(": ") {
                 Some((k, v)) => {
