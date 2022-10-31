@@ -45,6 +45,7 @@ impl Device {
         static KNOWN_ARS: &[usize] = &[
             119, 133, 137, 143, 166, 177, 185, 200, 220, 235, 240, 255, 266, 276,
         ];
+        eprintln!("MADVR NEAREST AR LINE: {ar}");
         let mut parts = ar.split(' ');
         let _ar = parts.next().unwrap();
         let _resolution = parts.next().unwrap();
