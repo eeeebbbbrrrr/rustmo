@@ -104,7 +104,7 @@ impl<T: VirtualDevice> RustmoDevice<T> {
 pub struct RustmoServer {
     devices: VirtualDevicesList,
     next_port: u16,
-    ip_address: Ipv4Addr,
+    ip_address: IpAddr,
     ssdp_listener: SsdpListener,
 }
 
@@ -127,7 +127,7 @@ impl RustmoServer {
     ///
     /// Create a new `RustmoServer` and listen for SSDP requests on the specified network interface
     ///
-    pub fn new(interface: Ipv4Addr, starting_port: u16) -> Self {
+    pub fn new(interface: IpAddr, starting_port: u16) -> Self {
         let devices: VirtualDevicesList = Arc::new(Mutex::new(Vec::new()));
         RustmoServer {
             devices: devices.clone(),
@@ -150,7 +150,7 @@ impl RustmoServer {
         virtual_device: T,
     ) -> Result<WrappedVirtualDevice<T>, RustmoError> {
         // let virtual_device: Box<dyn VirtualDevice> = Box::new(virtual_device);
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
+        self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
     ///
@@ -174,7 +174,7 @@ impl RustmoServer {
         let virtual_device = PollingDevice {
             device: virtual_device,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
+        self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
     ///
@@ -203,7 +203,7 @@ impl RustmoServer {
             device: virtual_device,
             believed_on: false,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
+        self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
     ///
@@ -235,7 +235,7 @@ impl RustmoServer {
             turn_off,
             check_is_on,
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
+        self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
     ///
@@ -266,7 +266,7 @@ impl RustmoServer {
             devices,
             __marker: PhantomData::default(),
         };
-        self.internal_add_device(name, IpAddr::V4(self.ip_address), virtual_device)
+        self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
     fn internal_add_device<T: VirtualDevice, S: Into<String>>(

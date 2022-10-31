@@ -1,5 +1,5 @@
 use parking_lot::Mutex;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
@@ -22,9 +22,14 @@ impl SsdpListener {
     /// `devices` is guarded by a Mutex so that users of this listener can add/remove devices
     /// while we're listening
     ///
-    pub(crate) fn listen(interface: Ipv4Addr, devices: VirtualDevicesList) -> Self {
+    pub(crate) fn listen(interface: IpAddr, devices: VirtualDevicesList) -> Self {
         thread::spawn(move || {
             let mut buf = [0; 65535];
+            let ip = if let IpAddr::V4(ip) = interface {
+                ip
+            } else {
+                panic!("IPv4 is required")
+            };
             let socket = net2::UdpBuilder::new_v4()
                 .unwrap()
                 .reuse_address(true)
@@ -34,7 +39,7 @@ impl SsdpListener {
                 .bind("0.0.0.0:1900")
                 .unwrap();
             socket
-                .join_multicast_v4(&Ipv4Addr::from_str("239.255.255.250").unwrap(), &interface)
+                .join_multicast_v4(&Ipv4Addr::from_str("239.255.255.250").unwrap(), &ip)
                 .unwrap();
 
             loop {
