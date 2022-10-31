@@ -216,6 +216,12 @@ pub struct Component {
     component_type: String,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum OutputEvent {
+    On { id: usize },
+    Off { id: usize },
+}
+
 impl Ra2MainRepeater {
     pub fn new(ip: IpAddr, username: &str, password: &str) -> Self {
         Ra2MainRepeater {
@@ -223,6 +229,47 @@ impl Ra2MainRepeater {
             username: username.to_string(),
             password: password.to_string(),
         }
+    }
+
+    pub fn monitor_output(
+        &self,
+    ) -> Result<crossbeam::channel::Receiver<OutputEvent>, VirtualDeviceError> {
+        let ip = self.ip;
+        let username = self.username.clone();
+        let password = self.password.clone();
+        let (sender, receiver) = crossbeam::channel::bounded(100);
+
+        std::thread::spawn(move || loop {
+            eprintln!("STARTING LUTRON MONITOR");
+            let result = catch_unwind(|| {
+                let mut telnet = login(ip, &username, &password)?;
+                while let Event::Data(data) = telnet.read()? {
+                    let response = String::from_utf8_lossy(&data).to_string();
+                    if response.starts_with("~OUTPUT") {
+                        let response = response.trim();
+                        eprintln!("LUTRON MONITOR LINE: {}", response);
+                        let mut parts = response.split(',');
+                        let _ = parts.next().unwrap();
+                        let id: usize = parts.next().unwrap().parse()?;
+                        let action: usize = parts.next().unwrap().parse()?;
+                        if action == 1 {
+                            let percent: f64 = parts.next().unwrap().parse()?;
+                            sender
+                                .send(if percent > 0.0 {
+                                    OutputEvent::On { id }
+                                } else {
+                                    OutputEvent::Off { id }
+                                })
+                                .expect("failed to send OutputEvent");
+                        }
+                    }
+                }
+                Ok::<(), VirtualDeviceError>(())
+            });
+            eprintln!("LUTRON MONITOR RESULT: {:?}", result);
+        });
+
+        Ok(receiver)
     }
 
     pub fn describe(&mut self) -> Result<Project, VirtualDeviceError> {
@@ -327,6 +374,7 @@ impl Device {
             .filter(|line| line.starts_with(&format!("~OUTPUT,{}", self.id)))
             .map(|line| line.trim().to_string())
             .collect::<String>();
+        let response = response.trim();
 
         eprintln!("LUTRON OUTPUT RESPONSE for {}: /{}/", self.id, response);
         if response.is_empty() {
