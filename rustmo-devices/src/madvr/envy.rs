@@ -13,6 +13,14 @@ impl Device {
         Self { ip }
     }
 
+    pub fn standby(&mut self) -> Result<(), VirtualDeviceError> {
+        self.send_command("Standby", true).map(|_| ())
+    }
+
+    pub fn reset(&mut self) -> Result<(), VirtualDeviceError> {
+        self.send_command("ReloadSoftware", true).map(|_| ())
+    }
+
     pub fn aspect_ratio(&mut self) -> Result<String, VirtualDeviceError> {
         Ok(self.send_command("GetAspectRatio", true)?.pop().unwrap())
     }
