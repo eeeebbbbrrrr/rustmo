@@ -84,7 +84,7 @@ impl Device {
 
         // can't write until we do
         socket.write_all(command.as_ref())?;
-        socket.write_u8(b'\r')?;
+        // socket.write_u8(b'\r')?;
         socket.write_u8(b'\n')?;
         socket.flush()?;
 
