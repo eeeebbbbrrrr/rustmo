@@ -21,7 +21,7 @@ impl Device {
         Self { ip }
     }
 
-    pub fn power_status(&mut self) -> Result<bool, VirtualDeviceError> {
+    pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
         let status: usize = self.send_command("Z1POW?;", Some("Z1POW"))?.parse()?;
         Ok(status == 1)
     }
@@ -34,7 +34,7 @@ impl Device {
         self.send_command("Z1POW0;", Some("Z1POW")).map(|_| ())
     }
 
-    pub fn inputs(&mut self) -> Result<impl Iterator<Item = (usize, String)>, VirtualDeviceError> {
+    pub fn inputs(&self) -> Result<impl Iterator<Item = (usize, String)>, VirtualDeviceError> {
         let mut socket = self.connect()?;
         let many = self
             .send_command_with_socket(&mut socket, "ICN?;", Some("ICN"))?
@@ -53,11 +53,11 @@ impl Device {
             .map(|_| ())
     }
 
-    pub fn current_input(&mut self) -> Result<usize, VirtualDeviceError> {
+    pub fn current_input(&self) -> Result<usize, VirtualDeviceError> {
         Ok(self.send_command("Z1INP?;", Some("Z1INP"))?.parse()?)
     }
 
-    pub fn get_volume(&mut self) -> Result<(f32, usize), VirtualDeviceError> {
+    pub fn get_volume(&self) -> Result<(f32, usize), VirtualDeviceError> {
         let dcbl = self.send_command("Z1VOL?;", Some("Z1VOL"))?.parse()?;
         let pct = self.send_command("Z1PVOL?;", Some("Z1PVOL"))?.parse()?;
         Ok((dcbl, pct))
@@ -93,15 +93,15 @@ impl Device {
         self.send_command("Z1MUTt;", Some("Z1MUT")).map(|_| ())
     }
 
-    fn connect(&mut self) -> Result<MySocket, VirtualDeviceError> {
-        Ok(MySocket(TcpStream::connect_timeout(
-            &SocketAddr::new(self.ip, 14999),
-            Duration::from_secs(1),
-        )?))
+    fn connect(&self) -> Result<MySocket, VirtualDeviceError> {
+        let socket =
+            TcpStream::connect_timeout(&SocketAddr::new(self.ip, 14999), Duration::from_secs(1))?;
+        socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        Ok(MySocket(socket))
     }
 
     fn send_command<B: AsRef<[u8]>>(
-        &mut self,
+        &self,
         command: B,
         expected: Option<&str>,
     ) -> Result<String, VirtualDeviceError> {
@@ -110,7 +110,7 @@ impl Device {
     }
 
     fn send_command_with_socket<B: AsRef<[u8]>>(
-        &mut self,
+        &self,
         socket: &mut MySocket,
         command: B,
         expected: Option<&str>,
@@ -183,7 +183,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::Off)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.power_status()? {
             Ok(VirtualDeviceState::On)
         } else {

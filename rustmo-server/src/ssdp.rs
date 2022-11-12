@@ -6,7 +6,7 @@ use std::thread;
 
 use net2::unix::UnixUdpBuilderExt;
 
-use crate::{RustmoDevice, VirtualDevice, VirtualDevicesList};
+use crate::{RustmoDevice, RustmoDeviceInfo, VirtualDevice, VirtualDevicesList};
 
 pub(crate) struct SsdpListener;
 
@@ -51,11 +51,11 @@ impl SsdpListener {
                 // eprintln!("DISCOVERY FROM: {}:{}", src.ip(), src.port());
                 if SsdpListener::is_discovery_request(dgram) {
                     // someone wants to know what devices we have
-                    for device in devices.lock().iter() {
+                    for device in devices.read().iter() {
                         // println!("DISCOVERED: {} by {}", device.name, src.ip());
                         socket
                             .send_to(
-                                SsdpListener::build_discovery_response(device).as_bytes(),
+                                SsdpListener::build_discovery_response(&device.info).as_bytes(),
                                 src,
                             )
                             .unwrap();
@@ -67,7 +67,7 @@ impl SsdpListener {
         SsdpListener
     }
 
-    fn build_discovery_response(device: &RustmoDevice<Box<dyn VirtualDevice>>) -> String {
+    fn build_discovery_response(device: &RustmoDeviceInfo) -> String {
         let mut response = String::new();
         response.push_str("HTTP/1.1 200 OK\r\n");
         response.push_str("CACHE-CONTROL: max-age=86400\r\n");

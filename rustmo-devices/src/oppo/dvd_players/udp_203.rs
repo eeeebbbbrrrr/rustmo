@@ -20,57 +20,61 @@ impl Device {
         Device { ip_address }
     }
 
-    pub fn enter(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn enter(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#SEL")
     }
 
-    pub fn up(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn up(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#NUP")
     }
 
-    pub fn down(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn down(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#NDN")
     }
 
-    pub fn left(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn left(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#NLT")
     }
 
-    pub fn right(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn right(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#NRT")
     }
 
-    pub fn home(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn home(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#HOM")
     }
 
-    pub fn osd(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn osd(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#OSD")
     }
 
-    pub fn play(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn play(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#PLA")
     }
 
-    pub fn pause(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn pause(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#PAU")
     }
 
-    pub fn stop(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn stop(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#STP")
     }
 
-    pub fn rewind(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn rewind(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#REV")
     }
 
-    pub fn fast_forward(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn fast_forward(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#FWD")
     }
 
-    fn send_command(&self, command: &'static str) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn send_command(
+        &self,
+        command: &'static str,
+    ) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let mut stream =
             TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 23), TIMEOUT)?;
+        stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all(format!("{}\r\n", command).as_ref())?;
 
         let res = &mut [0 as u8; 32];
@@ -98,9 +102,10 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::Off)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let mut stream =
             TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 23), TIMEOUT)?;
+        stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all("#QPW\r\n".as_ref())?;
         let res = &mut [0 as u8; 32];
         let len = stream.read(res)?;

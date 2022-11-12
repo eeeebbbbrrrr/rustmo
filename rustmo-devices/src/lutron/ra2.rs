@@ -272,7 +272,7 @@ impl Ra2MainRepeater {
         Ok(receiver)
     }
 
-    pub fn describe(&mut self) -> Result<Project, VirtualDeviceError> {
+    pub fn describe(&self) -> Result<Project, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.username, &self.password)?;
         let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
         let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
@@ -367,7 +367,7 @@ impl Device {
         Ok(())
     }
 
-    pub fn output_get(&mut self) -> Result<f32, VirtualDeviceError> {
+    pub fn output_get(&self) -> Result<f32, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let response = send_command(&mut telnet, &format!("?OUTPUT,{},1", self.id))?
             .into_iter()
@@ -504,7 +504,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::Off)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.output_get()? > 0.0 {
             Ok(VirtualDeviceState::On)
         } else {

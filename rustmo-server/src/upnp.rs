@@ -2,7 +2,6 @@ use std::borrow::BorrowMut;
 use std::io::Read;
 
 use hyper::server::{Fresh, Handler, Request, Response};
-use parking_lot::MutexGuard;
 use regex::Regex;
 use serde_xml_rs::from_reader;
 
@@ -31,37 +30,33 @@ pub(crate) struct UpnpEnvelope {
     pub(crate) body: UpnpBody,
 }
 
-pub(crate) struct DeviceHttpServerHandler<T: VirtualDevice> {
-    device: RustmoDevice<T>,
+pub(crate) struct DeviceHttpServerHandler {
+    device: RustmoDevice,
 }
 
-unsafe impl<T: VirtualDevice> Sync for DeviceHttpServerHandler<T> {}
-unsafe impl<T: VirtualDevice> Send for DeviceHttpServerHandler<T> {}
+unsafe impl Sync for DeviceHttpServerHandler {}
+unsafe impl Send for DeviceHttpServerHandler {}
 
-impl<T: VirtualDevice> Handler for DeviceHttpServerHandler<T> {
+impl Handler for DeviceHttpServerHandler {
     fn handle<'r, 'k>(&'r self, mut request: Request<'r, 'k>, mut response: Response<'r, Fresh>) {
-        println!(
+        eprintln!(
             "REQUEST: http://{}:{}{} from {}",
-            self.device.ip_address.to_string(),
-            self.device.port,
+            self.device.info.ip_address.to_string(),
+            self.device.info.port,
             request.uri.to_string(),
             request.remote_addr.to_string()
         );
-        let body =
-            match request.uri.to_string().as_str() {
-                "/setup.xml" => Some(self.handle_setup()),
-                "/eventservice.xml" => Some(self.handle_eventservice()),
-                "/metainfoservice.xml" => Some(self.handle_metainfoservice()),
-                "/upnp/control/basicevent1" => Some(self.handle_basicevent(
-                    request.borrow_mut(),
-                    &mut self.device.virtual_device.lock(),
-                )),
-                _ => {
-                    println!("Unrecognized request: {:?}", request.uri);
-                    *response.status_mut() = hyper::status::StatusCode::NotFound;
-                    None
-                }
-            };
+        let body = match request.uri.to_string().as_str() {
+            "/setup.xml" => Some(self.handle_setup()),
+            "/eventservice.xml" => Some(self.handle_eventservice()),
+            "/metainfoservice.xml" => Some(self.handle_metainfoservice()),
+            "/upnp/control/basicevent1" => Some(self.handle_basicevent(request.borrow_mut())),
+            _ => {
+                eprintln!("Unrecognized request: {:?}", request.uri);
+                *response.status_mut() = hyper::status::StatusCode::NotFound;
+                None
+            }
+        };
 
         if let Some(data) = body {
             *response.status_mut() = hyper::status::StatusCode::Ok;
@@ -73,16 +68,12 @@ impl<T: VirtualDevice> Handler for DeviceHttpServerHandler<T> {
     }
 }
 
-impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
-    pub(crate) fn new(device: RustmoDevice<T>) -> Self {
+impl DeviceHttpServerHandler {
+    pub(crate) fn new(device: RustmoDevice) -> Self {
         DeviceHttpServerHandler { device }
     }
 
-    fn handle_basicevent<'r, 'b>(
-        &self,
-        request: &mut Request<'r, 'b>,
-        virtual_device: &mut MutexGuard<T>,
-    ) -> Vec<u8> {
+    fn handle_basicevent<'r, 'b>(&self, request: &mut Request<'r, 'b>) -> Vec<u8> {
         let re = Regex::new("^\".*[#](.*)\"$").unwrap();
         let action =
             String::from_utf8(request.headers.get_raw("SOAPACTION").unwrap()[0].clone()).unwrap();
@@ -100,33 +91,33 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
         let get_or_set;
         let on_off = match action {
             "GetBinaryState" => {
-                println!(
+                eprintln!(
                     "GET_BINARY_STATE: {} by {}",
-                    self.device.name,
+                    self.device.info.name,
                     request.remote_addr.ip().to_string()
                 );
 
                 get_or_set = "Get";
-                virtual_device.check_is_on()
+                self.device.check_is_on()
             }
             "SetBinaryState" => {
                 get_or_set = "Set";
                 match envelope.body.set_binary_state {
                     Some(state) => {
                         if state.binary_state == 1 {
-                            println!(
+                            eprintln!(
                                 "TURN_ON: {} by {}",
-                                self.device.name,
+                                self.device.info.name,
                                 request.remote_addr.ip().to_string()
                             );
-                            virtual_device.turn_on()
+                            self.device.turn_on()
                         } else {
-                            println!(
+                            eprintln!(
                                 "TURN_OFF: {} by {}",
-                                self.device.name,
+                                self.device.info.name,
                                 request.remote_addr.ip().to_string()
                             );
-                            virtual_device.turn_off()
+                            self.device.turn_off()
                         }
                     }
                     None => Err(VirtualDeviceError::new(
@@ -135,7 +126,7 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
                 }
             }
             capture => {
-                println!(
+                eprintln!(
                     "ERROR:  Unknown capture value: /{}/ from /{}/",
                     capture, action
                 );
@@ -144,9 +135,9 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
         };
 
         match on_off {
-            Ok(state) => DeviceHttpServerHandler::<T>::make_basicevent_response(state, get_or_set),
+            Ok(state) => DeviceHttpServerHandler::make_basicevent_response(state, get_or_set),
             Err(e) => {
-                println!("ERROR:  Problem with {}: {}", self.device.name, e.0);
+                eprintln!("ERROR:  Problem with {}: {}", self.device.info.name, e.0);
                 return vec![];
             }
         }
@@ -173,7 +164,7 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
     }
 
     fn handle_setup(&self) -> Vec<u8> {
-        println!("SETUP: {}", self.device.name);
+        eprintln!("SETUP: {}", self.device.info.name);
         format!(
             "<root>
                 <device>
@@ -197,15 +188,15 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
                     </serviceList>
                 </device>
             </root>",
-            device_name = self.device.name,
-            uuid = self.device.uuid
+            device_name = self.device.info.name,
+            uuid = self.device.info.uuid
         )
         .as_bytes()
         .to_vec()
     }
 
     fn handle_eventservice(&self) -> Vec<u8> {
-        println!("EVENTSERVICE: {}", self.device.name);
+        eprintln!("EVENTSERVICE: {}", self.device.info.name);
         "<scpd xmlns='urn:Belkin:service-1-0'>
             <actionList>
                 <action>
@@ -249,7 +240,7 @@ impl<T: VirtualDevice> DeviceHttpServerHandler<T> {
     }
 
     fn handle_metainfoservice(&self) -> Vec<u8> {
-        println!("NETAINFO: {}", self.device.name);
+        eprintln!("NETAINFO: {}", self.device.info.name);
         "<scpd xmlns='urn:Belkin:service-1-0'>
             <specVersion>
                 <major>1</major>

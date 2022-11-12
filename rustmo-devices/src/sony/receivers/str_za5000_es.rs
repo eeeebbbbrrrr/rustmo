@@ -48,7 +48,7 @@ impl Device {
         Device { ip_address }
     }
 
-    pub fn get_video_input(&mut self) -> Result<VideoInput, VirtualDeviceError> {
+    pub fn get_video_input(&self) -> Result<VideoInput, VirtualDeviceError> {
         if self.is_off() {
             return Ok(VideoInput::Unknown);
         }
@@ -132,13 +132,13 @@ impl Device {
         self.check_is_muted()
     }
 
-    fn is_off(&mut self) -> bool {
+    fn is_off(&self) -> bool {
         self.check_is_on()
             .unwrap_or(VirtualDeviceState::Off)
             .eq(&VirtualDeviceState::Off)
     }
 
-    pub fn check_is_muted(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    pub fn check_is_muted(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         if self.is_off() {
             return Ok(VirtualDeviceState::Off);
         }
@@ -185,7 +185,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::Off)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let response =
             ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
                 .send_string(

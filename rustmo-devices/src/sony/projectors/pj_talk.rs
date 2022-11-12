@@ -56,6 +56,7 @@ impl Device {
             &SocketAddr::new(self.ip_address, 53484),
             Duration::from_millis(30000),
         )?;
+        stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         Ok(stream)
     }
 
@@ -69,7 +70,7 @@ impl Device {
         }
     }
 
-    pub fn set(&self, hi: u8, lo: u8, data: &[u8]) -> Result<Vec<u8>, VirtualDeviceError> {
+    pub fn set(&mut self, hi: u8, lo: u8, data: &[u8]) -> Result<Vec<u8>, VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, hi, lo, data))?;
         stream.flush()?;
@@ -79,14 +80,14 @@ impl Device {
         }
     }
 
-    pub fn cursor_up(&self) -> Result<(), VirtualDeviceError> {
+    pub fn cursor_up(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x35, &[0x00, 0x00]))?;
         stream.flush()?;
         Ok(())
     }
 
-    pub fn lens_control(&self, on: bool) -> Result<(), VirtualDeviceError> {
+    pub fn lens_control(&mut self, on: bool) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(
             0x00,
@@ -97,88 +98,88 @@ impl Device {
         Ok(stream.flush()?)
     }
 
-    pub fn lens_zoom(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_zoom(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x19, 0x62, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_focus(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_focus(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x19, 0x64, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_shift(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x19, 0x63, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
     #[track_caller]
-    pub fn lens_shift_up(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift_up(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x72, &[0x00, 00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_shift_down(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift_down(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x73, &[0x00, 00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_shift_left(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift_left(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x19, 0x02, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_shift_right(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_shift_right(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x19, 0x03, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_focus_far(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_focus_far(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x74, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_focus_near(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_focus_near(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x75, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_zoom_large(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_zoom_large(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x77, &[0x00, 0x00]))?;
         stream.flush()?;
         Ok(())
     }
 
-    pub fn lens_zoom_small(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_zoom_small(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x78, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn zoom_menu(&self) -> Result<(), VirtualDeviceError> {
+    pub fn zoom_menu(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x62, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn reset(&self) -> Result<(), VirtualDeviceError> {
+    pub fn reset(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x7B, &[0x00, 0x00]))?;
         stream.flush()?;
         Ok(())
     }
 
-    pub fn enter(&self) -> Result<(), VirtualDeviceError> {
+    pub fn enter(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x17, 0x5a, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
@@ -206,97 +207,101 @@ impl Device {
         })
     }
 
-    pub fn picture_position_185_1(&self) -> Result<(), VirtualDeviceError> {
+    pub fn picture_position_185_1(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x66, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn picture_position_235_1(&self) -> Result<(), VirtualDeviceError> {
+    pub fn picture_position_235_1(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x66, &[0x00, 0x01]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn picture_position_custom_1(&self) -> Result<(), VirtualDeviceError> {
+    pub fn picture_position_custom_1(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x66, &[0x00, 0x02]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn picture_position_custom_2(&self) -> Result<(), VirtualDeviceError> {
+    pub fn picture_position_custom_2(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x66, &[0x00, 0x03]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn picture_position_custom_3(&self) -> Result<(), VirtualDeviceError> {
+    pub fn picture_position_custom_3(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x66, &[0x00, 0x04]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_normal(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_normal(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x01]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_vstretch(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_vstretch(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x0B]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_1851_zoom(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_1851_zoom(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x0C]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_2351_zoom(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_2351_zoom(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x0D]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_stretch(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_stretch(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x0E]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn aspect_squeeze(&self) -> Result<(), VirtualDeviceError> {
+    pub fn aspect_squeeze(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0x20, &[0x00, 0x0F]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn lens_toggle(&self) -> Result<(), VirtualDeviceError> {
+    pub fn lens_toggle(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x1B, 0x78, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn test_pattern_off(&self) -> Result<(), VirtualDeviceError> {
+    pub fn test_pattern_off(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0xAB, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn test_pattern_on(&self) -> Result<(), VirtualDeviceError> {
+    pub fn test_pattern_on(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x00, 0xAB, &[0x00, 0x01]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn settings_reset(&self) -> Result<(), VirtualDeviceError> {
+    pub fn settings_reset(&mut self) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x01, 0x6A, &[0x00, 0x00]))?;
         Ok(stream.flush()?)
     }
 
-    pub fn blanking(&self, which: BlankingPosition, value: u8) -> Result<(), VirtualDeviceError> {
+    pub fn blanking(
+        &mut self,
+        which: BlankingPosition,
+        value: u8,
+    ) -> Result<(), VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(
             0x00,
@@ -389,7 +394,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::Off)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         Ok(match self.get_power_status()? {
             PowerStatus::Standby => VirtualDeviceState::Off,
             PowerStatus::Warming => VirtualDeviceState::On,

@@ -60,7 +60,7 @@ impl VirtualDevice for MyDevice {
         Ok(self.state)
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         eprintln!("Checking state");
         Ok(self.state)
     }
@@ -100,8 +100,8 @@ fn main() -> std::io::Result<()> {
 Various other helper methods exist for adding devices that need to poll for their state when changed, need to lie about
 their state when changed, combining devices into groups, etc.
 
-Adding a `VirtualDevice` returns a `WrappedVirtualDevice`, which is your device instance wrapped in an
-`Arc<Mutex<Box<dyn VirtualDevice>>>`.  This is the same type instance that `RustmoServer` internally uses to respond 
+Adding a `VirtualDevice` returns a `SynchronizedDevice`, which is your device instance wrapped in an
+`SynchronizedDevice`.  This is the same type instance that `RustmoServer` internally uses to respond 
 to Alexa requests.  You're free to use this in other `VirtualDevice` implementations that, perhaps, form more complex 
 operations across multiple devices and be guaranteed of thread safety when controlling the underlying device.
 

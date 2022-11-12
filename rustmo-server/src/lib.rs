@@ -1,61 +1,48 @@
 #[macro_use]
 extern crate serde_derive;
 
-use parking_lot::{Mutex, RawMutex};
+use std::cell::UnsafeCell;
 use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::thread;
 
+use parking_lot::RwLock;
 use uuid::Uuid;
 
 use crate::ssdp::SsdpListener;
 use crate::upnp::*;
 use crate::virtual_device::wrappers::*;
+pub use crate::virtual_device::wrappers::*;
 use crate::virtual_device::*;
 
 mod ssdp;
 mod upnp;
 pub mod virtual_device;
 
-pub use crate::virtual_device::wrappers::*;
-
-pub struct RustmoDevice<T: VirtualDevice> {
+#[derive(Clone)]
+pub struct RustmoDeviceInfo {
     pub(crate) name: String,
     pub(crate) ip_address: IpAddr,
     pub(crate) port: u16,
     pub(crate) uuid: Uuid,
-    pub(crate) virtual_device: WrappedVirtualDevice<T>,
 }
 
-impl<T: VirtualDevice> VirtualDevice for RustmoDevice<T> {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.virtual_device.lock().turn_on()
-    }
-
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.virtual_device.lock().turn_off()
-    }
-
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.virtual_device.lock().check_is_on()
-    }
-}
-impl<T: VirtualDevice> Clone for RustmoDevice<T> {
-    fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            ip_address: self.ip_address.clone(),
-            port: self.port,
-            uuid: self.uuid,
-            virtual_device: self.virtual_device.clone(),
-        }
-    }
+pub struct RustmoDevice {
+    pub(crate) info: RustmoDeviceInfo,
+    pub(crate) device: UnsafeCell<Box<dyn VirtualDevice>>,
 }
 
-impl<T: VirtualDevice> RustmoDevice<T> {
-    pub fn new<S: Into<String>>(name: S, ip_address: IpAddr, port: u16, virtual_device: T) -> Self {
+unsafe impl Send for RustmoDevice {}
+unsafe impl Sync for RustmoDevice {}
+
+impl RustmoDevice {
+    pub fn new<T: VirtualDevice, S: Into<String>>(
+        name: S,
+        ip_address: IpAddr,
+        port: u16,
+        virtual_device: &SynchronizedDevice<T>,
+    ) -> Self {
         let name = name.into();
         let mut bytes = Vec::from(name.as_bytes());
         while bytes.len() < 16 {
@@ -65,16 +52,21 @@ impl<T: VirtualDevice> RustmoDevice<T> {
             bytes.pop();
         }
 
-        let device = RustmoDevice {
+        let device_info = RustmoDeviceInfo {
             name: name.to_string(),
             ip_address,
             port,
             uuid: Uuid::from_slice(bytes.as_slice()).expect("failed to generate UUID"),
-            virtual_device: Arc::new(Mutex::new(virtual_device)),
         };
 
-        let cloned = device.clone();
+        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
+        let info = device_info.clone();
         thread::spawn(move || {
+            let device = RustmoDevice {
+                info,
+                device: UnsafeCell::new(device),
+            };
+
             let server = match hyper::Server::http(SocketAddr::new(ip_address, port)) {
                 Ok(server) => server,
                 Err(e) => panic!(
@@ -82,10 +74,26 @@ impl<T: VirtualDevice> RustmoDevice<T> {
                     ip_address, port, e
                 ),
             };
-            server.handle(DeviceHttpServerHandler::new(cloned)).unwrap();
+            server.handle(DeviceHttpServerHandler::new(device)).unwrap();
         });
 
-        device
+        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
+        RustmoDevice {
+            info: device_info,
+            device: UnsafeCell::new(device),
+        }
+    }
+
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        unsafe { self.device.get().as_mut().unwrap_unchecked().turn_on() }
+    }
+
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        unsafe { self.device.get().as_mut().unwrap_unchecked().turn_off() }
+    }
+
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        unsafe { self.device.get().as_ref().unwrap_unchecked().check_is_on() }
     }
 }
 
@@ -108,7 +116,7 @@ pub struct RustmoServer {
     ssdp_listener: SsdpListener,
 }
 
-pub type VirtualDevicesList = Arc<Mutex<Vec<RustmoDevice<Box<dyn VirtualDevice>>>>>;
+pub(crate) type VirtualDevicesList = Arc<RwLock<Vec<RustmoDevice>>>;
 
 #[derive(Debug)]
 pub enum RustmoError {
@@ -128,7 +136,7 @@ impl RustmoServer {
     /// Create a new `RustmoServer` and listen for SSDP requests on the specified network interface
     ///
     pub fn new(interface: IpAddr, starting_port: u16) -> Self {
-        let devices: VirtualDevicesList = Arc::new(Mutex::new(Vec::new()));
+        let devices: VirtualDevicesList = Arc::new(RwLock::new(Vec::new()));
         RustmoServer {
             devices: devices.clone(),
             ip_address: interface,
@@ -148,8 +156,7 @@ impl RustmoServer {
         &mut self,
         name: S,
         virtual_device: T,
-    ) -> Result<WrappedVirtualDevice<T>, RustmoError> {
-        // let virtual_device: Box<dyn VirtualDevice> = Box::new(virtual_device);
+    ) -> Result<SynchronizedDevice<T>, RustmoError> {
         self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
@@ -170,7 +177,7 @@ impl RustmoServer {
         &mut self,
         name: S,
         virtual_device: T,
-    ) -> Result<WrappedVirtualDevice<PollingDevice<T>>, RustmoError> {
+    ) -> Result<SynchronizedDevice<PollingDevice<T>>, RustmoError> {
         let virtual_device = PollingDevice {
             device: virtual_device,
         };
@@ -198,7 +205,7 @@ impl RustmoServer {
         &mut self,
         name: S,
         virtual_device: T,
-    ) -> Result<WrappedVirtualDevice<InstantOnDevice<T>>, RustmoError> {
+    ) -> Result<SynchronizedDevice<InstantOnDevice<T>>, RustmoError> {
         let virtual_device = InstantOnDevice {
             device: virtual_device,
             believed_on: false,
@@ -223,12 +230,11 @@ impl RustmoServer {
         turn_on: TurnOn,
         turn_off: TurnOff,
         check_is_on: CheckIsOn,
-    ) -> Result<WrappedVirtualDevice<FunctionalDevice<TurnOn, TurnOff, CheckIsOn>>, RustmoError>
+    ) -> Result<SynchronizedDevice<FunctionalDevice<TurnOn, TurnOff, CheckIsOn>>, RustmoError>
     where
         TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        CheckIsOn:
-            FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
         let virtual_device = FunctionalDevice {
             turn_on,
@@ -254,18 +260,15 @@ impl RustmoServer {
     ///
     /// `@name`:  The word or phrase you'll use when talking to Alexa to control this device
     /// `@port`:  The port on which the backing HTTP server will listen for UPNP requests
-    /// `@devices`:  A vector of `WrappedVirtualDevice` instances that have previously been added
+    /// `@devices`:  A vector of `SynchronizedDevice` instances that have previously been added
     /// to this `RustmoServer`
     ///
     pub fn add_device_group(
         &mut self,
         name: &str,
-        devices: Vec<WrappedVirtualDevice<Box<dyn VirtualDevice>>>,
-    ) -> Result<WrappedVirtualDevice<CompositeDevice<Box<dyn VirtualDevice>>>, RustmoError> {
-        let virtual_device = CompositeDevice {
-            devices,
-            __marker: PhantomData::default(),
-        };
+        devices: Vec<SynchronizedDevice<Box<dyn VirtualDevice>>>,
+    ) -> Result<SynchronizedDevice<CompositeDevice>, RustmoError> {
+        let virtual_device = CompositeDevice { devices };
         self.internal_add_device(name, self.ip_address, virtual_device)
     }
 
@@ -274,29 +277,26 @@ impl RustmoServer {
         name: S,
         ip_address: IpAddr,
         virtual_device: T,
-    ) -> Result<WrappedVirtualDevice<T>, RustmoError> {
+    ) -> Result<SynchronizedDevice<T>, RustmoError> {
         let name = name.into();
-        let mut device_list = self.devices.lock();
+        let mut device_list = self.devices.write();
         for existing_device in device_list.iter() {
-            if existing_device.name.to_lowercase().eq(&name.to_lowercase()) {
+            if existing_device
+                .info
+                .name
+                .to_lowercase()
+                .eq(&name.to_lowercase())
+            {
                 return Err(RustmoError::DeviceAlreadyExistsByName(name.to_string()));
             }
         }
 
-        let device = RustmoDevice::new(name, ip_address, self.next_port, virtual_device);
+        let synced = SynchronizedDevice::new(virtual_device);
+        let device = RustmoDevice::new(name, ip_address, self.next_port, &synced);
         self.next_port += 1;
 
-        device_list.push(RustmoDevice {
-            name: device.name.clone(),
-            ip_address: device.ip_address.clone(),
-            port: device.port,
-            uuid: device.uuid.clone(),
-            virtual_device: Arc::new(Mutex::new(
-                Box::new(device.virtual_device.clone()) as Box<dyn VirtualDevice>
-            )),
-        });
-
-        Ok(device.virtual_device)
+        device_list.push(device);
+        Ok(synced)
     }
 }
 

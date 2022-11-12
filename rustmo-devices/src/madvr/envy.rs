@@ -1,7 +1,8 @@
 use byteorder::WriteBytesExt;
-use rustmo_server::virtual_device::VirtualDeviceError;
+use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::time::Duration;
 
 #[derive(Copy, Clone)]
 pub struct Device {
@@ -21,11 +22,11 @@ impl Device {
         self.send_command("ReloadSoftware", true).map(|_| ())
     }
 
-    pub fn aspect_ratio(&mut self) -> Result<String, VirtualDeviceError> {
+    pub fn aspect_ratio(&self) -> Result<String, VirtualDeviceError> {
         Ok(self.send_command("GetAspectRatio", true)?.pop().unwrap())
     }
 
-    pub fn get_nearest_aspect_ratio(&mut self) -> Result<usize, VirtualDeviceError> {
+    pub fn get_nearest_aspect_ratio(&self) -> Result<usize, VirtualDeviceError> {
         Self::nearest_aspect_ratio_int(self.aspect_ratio()?)
     }
 
@@ -72,6 +73,8 @@ impl Device {
         expect_response: bool,
     ) -> Result<Vec<String>, VirtualDeviceError> {
         let mut socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
+        socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+
         let mut reader = BufReader::new(socket.try_clone()?);
 
         // consume WELCOME message
@@ -108,5 +111,22 @@ impl Device {
             }
         }
         Ok(responses)
+    }
+}
+
+impl VirtualDevice for Device {
+    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        todo!("How to turn madvr on?")
+        // Ok(VirtualDeviceState::On)
+    }
+
+    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        todo!("How to turn madvr off?")
+        // Ok(VirtualDeviceState::Off)
+    }
+
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        // if something worked then it's on
+        self.aspect_ratio().map(|_| VirtualDeviceState::On)
     }
 }

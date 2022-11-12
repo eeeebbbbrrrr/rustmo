@@ -1,5 +1,3 @@
-use crate::RustmoError;
-use parking_lot::Mutex;
 use std::borrow::BorrowMut;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::AddrParseError;
@@ -7,6 +5,11 @@ use std::num::{ParseFloatError, ParseIntError};
 use std::ops::{Deref, DerefMut};
 use std::str::Utf8Error;
 use std::sync::Arc;
+
+// use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use crate::RustmoError;
 
 #[derive(Debug)]
 pub struct VirtualDeviceError(pub String);
@@ -99,13 +102,6 @@ pub enum VirtualDeviceState {
 }
 
 ///
-/// `WrappedVirtualDevice` represents a `VirtualDevice` implementaiton
-/// that is reference counted and guarded by a mutex, so that it can
-/// be shared across threads
-///
-pub type WrappedVirtualDevice<T> = Arc<Mutex<T>>;
-
-///
 /// The `VirtualDevice` trait allows implementors to create devices that
 /// can be exposed to Alexa via `RustmoServer`
 ///
@@ -136,21 +132,7 @@ pub trait VirtualDevice: Sync + Send + 'static {
     fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 
     /// is the device on?
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError>;
-}
-
-impl<T: VirtualDevice> VirtualDevice for WrappedVirtualDevice<T> {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().turn_on()
-    }
-
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().turn_off()
-    }
-
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().check_is_on()
-    }
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 }
 
 impl VirtualDevice for Box<dyn VirtualDevice> {
@@ -162,13 +144,12 @@ impl VirtualDevice for Box<dyn VirtualDevice> {
         self.deref_mut().turn_off()
     }
 
-    fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref_mut().check_is_on()
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref().check_is_on()
     }
 }
 
 pub(crate) mod wrappers {
-    use std::marker::PhantomData;
     use std::ops::{Deref, DerefMut};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
@@ -177,7 +158,7 @@ pub(crate) mod wrappers {
     use rayon::prelude::*;
 
     use crate::virtual_device::{
-        VirtualDevice, VirtualDeviceError, VirtualDeviceState, WrappedVirtualDevice,
+        SynchronizedDevice, VirtualDevice, VirtualDeviceError, VirtualDeviceState,
     };
 
     ///
@@ -227,7 +208,7 @@ pub(crate) mod wrappers {
             result
         }
 
-        fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             eprintln!("INSTANT: {}", self.believed_on);
             if self.believed_on {
                 return Ok(VirtualDeviceState::On);
@@ -269,7 +250,7 @@ pub(crate) mod wrappers {
                 VirtualDeviceState::Off => {
                     let mut cnt = 0;
                     while state.eq(&VirtualDeviceState::Off) {
-                        println!("POLLING for 'on': cnt={}", cnt);
+                        eprintln!("POLLING for 'on': cnt={}", cnt);
 
                         thread::sleep(Duration::from_millis(400));
                         state = self.device.check_is_on().unwrap_or(VirtualDeviceState::Off);
@@ -292,7 +273,7 @@ pub(crate) mod wrappers {
                 VirtualDeviceState::On => {
                     let mut cnt = 0;
                     while state.eq(&VirtualDeviceState::On) {
-                        println!("POLLING for 'off': cnt={}", cnt);
+                        eprintln!("POLLING for 'off': cnt={}", cnt);
                         thread::sleep(Duration::from_millis(400));
 
                         state = self.device.check_is_on().unwrap_or(VirtualDeviceState::On);
@@ -307,7 +288,7 @@ pub(crate) mod wrappers {
             }
         }
 
-        fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.device.check_is_on()
         }
     }
@@ -318,19 +299,17 @@ pub(crate) mod wrappers {
     ///
     /// All state changes and inqueries to the underlying devices happen in parallel
     ///
-    pub struct CompositeDevice<T> {
-        pub(crate) devices: Vec<WrappedVirtualDevice<Box<dyn VirtualDevice>>>,
-        pub(crate) __marker: PhantomData<T>,
+    pub struct CompositeDevice {
+        pub(crate) devices: Vec<SynchronizedDevice<Box<dyn VirtualDevice>>>,
     }
 
-    impl<T: VirtualDevice> VirtualDevice for CompositeDevice<T> {
+    impl VirtualDevice for CompositeDevice {
         fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-            self.devices.par_iter_mut().for_each(|device| {
-                let mut locked = device.lock();
-                if locked.check_is_on().unwrap_or(VirtualDeviceState::Off)
+            self.devices.iter().for_each(|device| {
+                if device.check_is_on().unwrap_or(VirtualDeviceState::Off)
                     == VirtualDeviceState::Off
                 {
-                    locked.turn_on().ok().unwrap();
+                    device.turn_on().ok().unwrap();
                 }
             });
 
@@ -338,25 +317,20 @@ pub(crate) mod wrappers {
         }
 
         fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-            self.devices.par_iter_mut().for_each(|device| {
-                let mut locked = device.lock();
-                if locked.check_is_on().unwrap_or(VirtualDeviceState::Off) == VirtualDeviceState::On
+            self.devices.iter().for_each(|device| {
+                if device.check_is_on().unwrap_or(VirtualDeviceState::Off) == VirtualDeviceState::On
                 {
-                    locked.turn_off().ok().unwrap();
+                    device.turn_off().ok().unwrap();
                 }
             });
 
             self.check_is_on()
         }
 
-        fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             let on = AtomicBool::new(true);
-            self.devices.par_iter_mut().for_each(|device| {
-                match device
-                    .lock()
-                    .check_is_on()
-                    .unwrap_or(VirtualDeviceState::Off)
-                {
+            self.devices.iter().for_each(|device| {
+                match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
                     VirtualDeviceState::On => {
                         on.compare_exchange(true, true, Ordering::SeqCst, Ordering::SeqCst)
                             .ok();
@@ -381,8 +355,7 @@ pub(crate) mod wrappers {
     where
         TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        CheckIsOn:
-            FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
         pub(crate) turn_on: TurnOn,
         pub(crate) turn_off: TurnOff,
@@ -393,8 +366,7 @@ pub(crate) mod wrappers {
     where
         TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        CheckIsOn:
-            FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
         fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             (self.turn_on)()
@@ -404,8 +376,77 @@ pub(crate) mod wrappers {
             (self.turn_off)()
         }
 
-        fn check_is_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             (self.check_is_on)()
         }
+    }
+}
+
+///
+/// [`SynchronizedDevice`] represents a `VirtualDevice` implementation
+/// that is reference counted and guarded by a mutex, so that it can
+/// be shared across threads
+///
+pub struct SynchronizedDevice<T> {
+    device: Arc<RwLock<T>>,
+}
+
+impl<T> Clone for SynchronizedDevice<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        SynchronizedDevice {
+            device: Arc::clone(&self.device),
+        }
+    }
+}
+
+impl<T> SynchronizedDevice<T>
+where
+    T: VirtualDevice,
+{
+    #[inline]
+    pub fn new(device: T) -> Self {
+        SynchronizedDevice {
+            device: Arc::new(RwLock::new(device)),
+        }
+    }
+
+    #[inline]
+    pub fn read(&self) -> RwLockReadGuard<T> {
+        self.device.read().unwrap()
+    }
+
+    #[inline]
+    pub fn write(&self) -> RwLockWriteGuard<T> {
+        self.device.write().unwrap()
+    }
+
+    pub fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.write().turn_on()
+    }
+
+    pub fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.write().turn_off()
+    }
+
+    pub fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.read().check_is_on()
+    }
+}
+
+impl<T> VirtualDevice for SynchronizedDevice<T>
+where
+    T: VirtualDevice,
+{
+    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.write().turn_on()
+    }
+
+    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.write().turn_off()
+    }
+
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.read().check_is_on()
     }
 }
