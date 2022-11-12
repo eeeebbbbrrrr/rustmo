@@ -85,8 +85,8 @@ impl Device {
 
         // can't write until we do
         writer.write_all(command.as_ref())?;
-        socket.write_all(b"\r\n")?;
-        socket.flush()?;
+        writer.write_all(b"\r\n")?;
+        writer.flush()?;
 
         eprintln!(
             "ENVY:  send command={}",
