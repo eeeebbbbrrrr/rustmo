@@ -1,6 +1,6 @@
 use byteorder::WriteBytesExt;
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -84,10 +84,19 @@ impl Device {
         socket.write_all(command.as_ref())?;
         socket.write_u8(b'\r')?;
         socket.write_u8(b'\n')?;
+        socket.flush()?;
 
         let mut responses = Vec::new();
         let mut got_ok = false;
         for line in reader.lines() {
+            eprintln!("   ENVY line={:?}", line);
+            if let Err(e) = line {
+                if let ErrorKind::WouldBlock = e.kind() {
+                    eprintln!("   ENVY would block... retrying in 250ms");
+                    std::thread::sleep(Duration::from_millis(250));
+                    continue;
+                }
+            }
             let line = line?;
             let line = line.trim();
 
