@@ -34,7 +34,7 @@ impl Device {
         self.send_command("Z1POW0;", Some("Z1POW")).map(|_| ())
     }
 
-    pub fn inputs(&self) -> Result<impl Iterator<Item = (usize, String)>, VirtualDeviceError> {
+    pub fn inputs(&mut self) -> Result<impl Iterator<Item = (usize, String)>, VirtualDeviceError> {
         let mut socket = self.connect()?;
         let many = self
             .send_command_with_socket(&mut socket, "ICN?;", Some("ICN"))?
@@ -53,11 +53,11 @@ impl Device {
             .map(|_| ())
     }
 
-    pub fn current_input(&self) -> Result<usize, VirtualDeviceError> {
+    pub fn current_input(&mut self) -> Result<usize, VirtualDeviceError> {
         Ok(self.send_command("Z1INP?;", Some("Z1INP"))?.parse()?)
     }
 
-    pub fn get_volume(&self) -> Result<(f32, usize), VirtualDeviceError> {
+    pub fn get_volume(&mut self) -> Result<(f32, usize), VirtualDeviceError> {
         let dcbl = self.send_command("Z1VOL?;", Some("Z1VOL"))?.parse()?;
         let pct = self.send_command("Z1PVOL?;", Some("Z1PVOL"))?.parse()?;
         Ok((dcbl, pct))
