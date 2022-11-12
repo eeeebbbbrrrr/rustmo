@@ -1,6 +1,6 @@
 use byteorder::WriteBytesExt;
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, LineWriter, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -76,6 +76,7 @@ impl Device {
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
 
         let mut reader = BufReader::new(socket.try_clone()?);
+        let mut writer = LineWriter::new(socket);
 
         // consume WELCOME message
         let mut welcome = String::new();
@@ -83,9 +84,8 @@ impl Device {
         eprintln!("ENVY:  got welcome={}", welcome);
 
         // can't write until we do
-        socket.write_all(command.as_ref())?;
-        // socket.write_u8(b'\r')?;
-        socket.write_u8(b'\n')?;
+        writer.write_all(command.as_ref())?;
+        socket.write_all(b"\r\n")?;
         socket.flush()?;
 
         eprintln!(
