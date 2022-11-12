@@ -25,7 +25,7 @@ impl Device {
         }
     }
 
-    pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
+    pub fn power_status(&mut self) -> Result<bool, VirtualDeviceError> {
         Ok(self.exec(vec!["power_state"])? == "PowerState.On")
     }
 
@@ -44,7 +44,7 @@ impl Device {
         Ok(())
     }
 
-    pub fn current_app(&self) -> Result<Option<(String, String)>, VirtualDeviceError> {
+    pub fn current_app(&mut self) -> Result<Option<(String, String)>, VirtualDeviceError> {
         let map = Self::parse_map(&self.exec(vec!["app"])?, "\n");
         if let Some(app) = map.get("App") {
             Ok(Self::parse_app_tuple(app))
@@ -53,7 +53,9 @@ impl Device {
         }
     }
 
-    pub fn app_list(&self) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
+    pub fn app_list(
+        &mut self,
+    ) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
         let mut apps = Vec::new();
         for line in self.exec(vec!["app_list"])?.split(", ") {
             let map = Self::parse_map(line, "\n");
@@ -138,11 +140,11 @@ impl Device {
         self.exec(vec!["skip_forward"]).map(|_| ())
     }
 
-    pub fn playing(&self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
+    pub fn playing(&mut self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
         Ok(Self::parse_map(&self.exec(vec!["playing"])?, "\n"))
     }
 
-    pub fn paused(&self) -> Result<bool, VirtualDeviceError> {
+    pub fn paused(&mut self) -> Result<bool, VirtualDeviceError> {
         Ok(self.exec(vec!["device_state"])? == "DeviceState.Paused")
     }
 
@@ -184,6 +186,7 @@ impl Device {
             .arg(&self.companion_creds)
             .args(args.into_iter().map(|a| a.into()));
 
+        eprintln!("APPLETV COMMAND: {:?}", command);
         let output = command.output()?;
         if output.status.success() {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
