@@ -97,6 +97,8 @@ impl Device {
                         eprintln!("   ENVY would block... retrying in 250ms");
                         std::thread::sleep(Duration::from_millis(250));
                         continue;
+                    } else {
+                        return Err(VirtualDeviceError::from(format!("{:?}", e)));
                     }
                 }
             };
