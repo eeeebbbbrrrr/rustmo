@@ -410,6 +410,7 @@ impl Device {
 fn login(ip: IpAddr, uid: &str, upw: &str) -> Result<telnet::Telnet, VirtualDeviceError> {
     let mut telnet =
         telnet::Telnet::connect_timeout(&SocketAddr::new(ip, 23), 65536, Duration::from_secs(30))?;
+    telnet.read_timeout(Duration::from_millis(2000))?;
 
     while let Event::Data(bytes) = telnet.read()? {
         match bytes.as_ref() {
