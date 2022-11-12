@@ -73,7 +73,7 @@ impl Device {
         expect_response: bool,
     ) -> Result<Vec<String>, VirtualDeviceError> {
         let mut socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
-        // socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
 
         let mut reader = BufReader::new(socket.try_clone()?);
         let mut writer = LineWriter::new(socket);
@@ -82,6 +82,8 @@ impl Device {
         let mut welcome = String::new();
         reader.read_line(&mut welcome)?;
         eprintln!("ENVY:  got welcome={}", welcome);
+
+        std::thread::sleep(Duration::from_millis(300));
 
         // can't write until we do
         writer.write_all(command.as_ref())?;
@@ -100,13 +102,8 @@ impl Device {
             let line = match line {
                 Ok(line) => line,
                 Err(e) => {
-                    if let ErrorKind::WouldBlock = e.kind() {
-                        eprintln!("   ENVY would block... retrying in 250ms");
-                        std::thread::sleep(Duration::from_millis(250));
-                        continue;
-                    } else {
-                        return Err(VirtualDeviceError::from(format!("{:?}", e)));
-                    }
+                    eprintln!("ENVY error={:?}", e.kind());
+                    return Err(VirtualDeviceError::from(format!("{:?}", e)));
                 }
             };
             let line = line.trim();
