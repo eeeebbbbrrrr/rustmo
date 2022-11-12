@@ -78,7 +78,9 @@ impl Device {
         let mut reader = BufReader::new(socket.try_clone()?);
 
         // consume WELCOME message
-        reader.read_line(&mut String::new())?;
+        let mut welcome = String::new();
+        reader.read_line(&mut welcome)?;
+        eprintln!("ENVY:  got welcome={}", welcome);
 
         // can't write until we do
         socket.write_all(command.as_ref())?;
