@@ -86,8 +86,13 @@ impl Device {
         socket.write_u8(b'\n')?;
         socket.flush()?;
 
+        eprintln!(
+            "ENVY:  send command={}",
+            String::from_utf8_lossy(command.as_ref())
+        );
         let mut responses = Vec::new();
         let mut got_ok = false;
+        eprintln!("ENVY:  starting to read");
         for line in reader.lines() {
             eprintln!("   ENVY line={:?}", line);
             let line = match line {
