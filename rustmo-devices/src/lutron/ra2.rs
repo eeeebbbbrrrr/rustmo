@@ -410,31 +410,36 @@ impl Device {
 fn login(ip: IpAddr, uid: &str, upw: &str) -> Result<telnet::Telnet, VirtualDeviceError> {
     let mut telnet = telnet::Telnet::connect_timeout(
         &SocketAddr::new(ip, 23),
-        65536,
-        Duration::from_millis(2000),
+        1024,
+        Duration::from_millis(1000),
     )?;
-    telnet.read_timeout(Duration::from_millis(2000))?;
 
-    while let Event::Data(bytes) = telnet.read()? {
-        match bytes.as_ref() {
-            b"login: " => send_line(&mut telnet, uid)?,
-            b"password: " => send_line(&mut telnet, upw)?,
-            b"\r\nGNET> \0" => break,
-            _ => {
-                let prompt = String::from_utf8_lossy(&bytes);
-                if prompt.contains("GNET> ") {
-                    // just in case the arm above didn't quite get it
-                    break;
-                } else if prompt.starts_with("~") {
-                    // it's some response from a prior command that came from somewhere
-                    continue;
+    loop {
+        let event = telnet.read_timeout(Duration::from_millis(1000))?;
+        if let Event::Data(bytes) = event {
+            eprintln!("LUTRON EVENT DATA: {:?}", String::from_utf8_lossy(&bytes));
+            match bytes.as_ref() {
+                b"login: " => send_line(&mut telnet, uid)?,
+                b"password: " => send_line(&mut telnet, upw)?,
+                b"\r\nGNET> \0" => break,
+                _ => {
+                    let prompt = String::from_utf8_lossy(&bytes);
+                    if prompt.contains("GNET> ") {
+                        // just in case the arm above didn't quite get it
+                        break;
+                    } else if prompt.starts_with("~") {
+                        // it's some response from a prior command that came from somewhere
+                        continue;
+                    }
+
+                    return Err(VirtualDeviceError::from(format!(
+                        "unrecognized prompt: /{}/",
+                        prompt
+                    )));
                 }
-
-                return Err(VirtualDeviceError::from(format!(
-                    "unrecognized prompt: /{}/",
-                    prompt
-                )));
             }
+        } else {
+            break;
         }
     }
 
