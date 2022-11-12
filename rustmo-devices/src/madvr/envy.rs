@@ -90,14 +90,16 @@ impl Device {
         let mut got_ok = false;
         for line in reader.lines() {
             eprintln!("   ENVY line={:?}", line);
-            if let Err(e) = &line {
-                if let ErrorKind::WouldBlock = e.kind() {
-                    eprintln!("   ENVY would block... retrying in 250ms");
-                    std::thread::sleep(Duration::from_millis(250));
-                    continue;
+            let line = match line {
+                Ok(line) => line,
+                Err(e) => {
+                    if let ErrorKind::WouldBlock = e.kind() {
+                        eprintln!("   ENVY would block... retrying in 250ms");
+                        std::thread::sleep(Duration::from_millis(250));
+                        continue;
+                    }
                 }
-            }
-            let line = line?;
+            };
             let line = line.trim();
 
             if line == "OK" {
