@@ -243,7 +243,7 @@ impl Ra2MainRepeater {
             eprintln!("STARTING LUTRON MONITOR");
             let result = catch_unwind(|| {
                 let mut telnet = login(ip, &username, &password)?;
-                while let Event::Data(data) = telnet.read()? {
+                while let Event::Data(data) = telnet.read_timeout(Duration::from_millis(1000))? {
                     let response = String::from_utf8_lossy(&data).to_string();
                     if response.starts_with("~OUTPUT") {
                         let response = response.trim();
@@ -266,6 +266,7 @@ impl Ra2MainRepeater {
                 }
                 Ok::<(), VirtualDeviceError>(())
             });
+            std::thread::sleep(Duration::from_millis(3000));
             eprintln!("LUTRON MONITOR RESULT: {:?}", result);
         });
 
@@ -461,7 +462,7 @@ fn send_command(
     telnet.write(b"\r\n")?;
 
     let mut responses = Vec::new();
-    while let Event::Data(response) = telnet.read()? {
+    while let Event::Data(response) = telnet.read_timeout(Duration::from_millis(1000))? {
         let response = String::from_utf8_lossy(&response);
         if response.contains("GNET> ") {
             return Ok(responses);
