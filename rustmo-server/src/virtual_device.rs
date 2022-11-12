@@ -6,8 +6,8 @@ use std::ops::{Deref, DerefMut};
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-// use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+// use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::RustmoError;
 
@@ -413,12 +413,12 @@ where
 
     #[inline]
     pub fn read(&self) -> RwLockReadGuard<T> {
-        self.device.read().unwrap()
+        self.device.read()
     }
 
     #[inline]
     pub fn write(&self) -> RwLockWriteGuard<T> {
-        self.device.write().unwrap()
+        self.device.write()
     }
 
     pub fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
