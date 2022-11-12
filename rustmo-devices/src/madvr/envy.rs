@@ -73,7 +73,7 @@ impl Device {
         expect_response: bool,
     ) -> Result<Vec<String>, VirtualDeviceError> {
         let mut socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
-        socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        // socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
 
         let mut reader = BufReader::new(socket.try_clone()?);
         let mut writer = LineWriter::new(socket);
