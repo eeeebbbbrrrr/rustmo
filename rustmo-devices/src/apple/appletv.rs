@@ -25,7 +25,7 @@ impl Device {
         }
     }
 
-    pub fn power_status(&mut self) -> Result<bool, VirtualDeviceError> {
+    pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
         Ok(self.exec(vec!["power_state"])? == "PowerState.On")
     }
 
