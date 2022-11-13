@@ -133,6 +133,7 @@ impl Device {
 
 impl VirtualDevice for Device {
     fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        todo!("How to turn madvr on?")
         // Ok(VirtualDeviceState::On)
     }
 
