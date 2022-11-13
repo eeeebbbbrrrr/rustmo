@@ -51,6 +51,10 @@ impl Device {
         Ok(())
     }
 
+    pub fn heart_beat(&self) -> Result<(), VirtualDeviceError> {
+        self.send_command("HeartBeat", false).map(|_| ())
+    }
+
     fn nearest_aspect_ratio_int(ar: String) -> Result<usize, VirtualDeviceError> {
         static KNOWN_ARS: &[usize] = &[
             119, 133, 137, 143, 166, 177, 185, 200, 220, 235, 240, 255, 266, 276,
@@ -149,6 +153,6 @@ impl VirtualDevice for Device {
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         // if something worked then it's on
-        self.aspect_ratio().map(|_| VirtualDeviceState::On)
+        self.heart_beat().map(|_| VirtualDeviceState::On)
     }
 }
