@@ -31,21 +31,17 @@ impl Device {
         Self::nearest_aspect_ratio_int(self.aspect_ratio()?)
     }
 
-    pub fn custom_zoom_off(&mut self) -> Result<(), VirtualDeviceError> {
-        let ar = Self::nearest_aspect_ratio_int(self.aspect_ratio()?)?;
-
+    pub fn custom_zoom_off(&mut self, aspect_ratio: usize) -> Result<(), VirtualDeviceError> {
         self.send_command(
-            format!("ChangeOption temporary\\customZoomConfig\\active.{ar} NO",),
+            format!("ChangeOption temporary\\customZoomConfig\\active.{aspect_ratio} NO",),
             false,
         )?;
         Ok(())
     }
 
-    pub fn custom_zoom_on(&mut self) -> Result<(), VirtualDeviceError> {
-        let ar = Self::nearest_aspect_ratio_int(self.aspect_ratio()?)?;
-
+    pub fn custom_zoom_on(&mut self, aspect_ratio: usize) -> Result<(), VirtualDeviceError> {
         self.send_command(
-            format!("ChangeOption temporary\\customZoomConfig\\active.{ar} YES",),
+            format!("ChangeOption temporary\\customZoomConfig\\active.{aspect_ratio} YES",),
             false,
         )?;
         Ok(())
