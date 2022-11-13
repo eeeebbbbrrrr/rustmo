@@ -31,12 +31,12 @@ impl Device {
         Ok(self.exec(vec!["power_state"])? == "PowerState.On")
     }
 
-    pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
         self.exec(vec!["turn_on"])?;
         Ok(())
     }
 
-    pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
         self.exec(vec!["turn_off"])?;
         Ok(())
     }
@@ -205,12 +205,12 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.power_on()?;
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.power_off()?;
         Ok(VirtualDeviceState::Off)
     }

@@ -380,7 +380,7 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x01, 0x30, &[0x00, 0x01]))?;
         stream.flush()?;
@@ -388,7 +388,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let mut stream = self.open()?;
         stream.write_all(&Device::make_command_bytes(0x00, 0x01, 0x30, &[0x00, 0x00]))?;
         stream.flush()?;

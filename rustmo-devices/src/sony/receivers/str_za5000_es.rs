@@ -167,7 +167,7 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"main.power\",\"value\":\"on\"}]}")
             ?;
@@ -175,7 +175,7 @@ impl VirtualDevice for Device {
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"main.power\",\"value\":\"off\"}]}")
             ?;

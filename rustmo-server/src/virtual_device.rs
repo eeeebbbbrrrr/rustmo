@@ -1,12 +1,11 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::net::AddrParseError;
 use std::num::{ParseFloatError, ParseIntError};
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-// use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{Mutex, MutexGuard};
 
 use crate::RustmoError;
 
@@ -125,10 +124,10 @@ pub enum VirtualDeviceState {
 ///
 pub trait VirtualDevice: Sync + Send + 'static {
     /// turn the device on
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError>;
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 
     /// turn the device off
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError>;
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 
     /// is the device on?
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
@@ -161,14 +160,14 @@ pub(crate) mod wrappers {
     ///
     pub struct InstantOnDevice<T> {
         pub(crate) device: T,
-        pub(crate) believed_on: bool,
+        pub(crate) believed_on: AtomicBool,
     }
 
     impl<T> InstantOnDevice<T> {
         pub fn new(device: T) -> Self {
             Self {
                 device,
-                believed_on: false,
+                believed_on: AtomicBool::new(false),
             }
         }
     }
@@ -188,22 +187,22 @@ pub(crate) mod wrappers {
     }
 
     impl<T: VirtualDevice> VirtualDevice for InstantOnDevice<T> {
-        fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             let result = self.device.turn_on();
-            self.believed_on = true;
+            self.believed_on.store(true, Ordering::SeqCst);
 
             result
         }
 
-        fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             let result = self.device.turn_off();
-            self.believed_on = false;
+            self.believed_on.store(false, Ordering::SeqCst);
 
             result
         }
 
         fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-            if self.believed_on {
+            if self.believed_on.load(Ordering::SeqCst) {
                 return Ok(VirtualDeviceState::On);
             }
 
@@ -235,7 +234,7 @@ pub(crate) mod wrappers {
     }
 
     impl<T: VirtualDevice> VirtualDevice for PollingDevice<T> {
-        fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.device.turn_on()?;
 
             let mut state = self.device.check_is_on().unwrap_or(VirtualDeviceState::Off);
@@ -256,7 +255,7 @@ pub(crate) mod wrappers {
             }
         }
 
-        fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.device.turn_off()?;
 
             let mut state = self.device.check_is_on().unwrap_or(VirtualDeviceState::On);
@@ -294,7 +293,7 @@ pub(crate) mod wrappers {
     }
 
     impl VirtualDevice for CompositeDevice {
-        fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.iter().for_each(|device| {
                 if device.check_is_on().unwrap_or(VirtualDeviceState::Off)
                     == VirtualDeviceState::Off
@@ -306,7 +305,7 @@ pub(crate) mod wrappers {
             self.check_is_on()
         }
 
-        fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.devices.iter().for_each(|device| {
                 if device.check_is_on().unwrap_or(VirtualDeviceState::Off) == VirtualDeviceState::On
                 {
@@ -343,8 +342,8 @@ pub(crate) mod wrappers {
     /// Wrapper for `VirtualDevice` that allows a device to be implemented using closures
     pub struct FunctionalDevice<TurnOn, TurnOff, CheckIsOn>
     where
-        TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOff: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
         pub(crate) turn_on: TurnOn,
@@ -354,15 +353,15 @@ pub(crate) mod wrappers {
 
     impl<TurnOn, TurnOff, CheckIsOn> VirtualDevice for FunctionalDevice<TurnOn, TurnOff, CheckIsOn>
     where
-        TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOff: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
-        fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             (self.turn_on)()
         }
 
-        fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             (self.turn_off)()
         }
 
@@ -378,7 +377,7 @@ pub(crate) mod wrappers {
 /// be shared across threads
 ///
 pub struct SynchronizedDevice<T: ?Sized> {
-    device: Arc<RwLock<T>>,
+    device: Arc<Mutex<T>>,
 }
 
 impl<T> Clone for SynchronizedDevice<T> {
@@ -397,40 +396,40 @@ where
     #[inline]
     pub fn new(device: T) -> Self {
         SynchronizedDevice {
-            device: Arc::new(RwLock::new(device)),
+            device: Arc::new(Mutex::new(device)),
         }
     }
 
     #[inline]
-    pub fn read(&self) -> RwLockReadGuard<T> {
-        self.device.read()
+    pub fn lock(&self) -> MutexGuard<T> {
+        self.device.lock()
+    }
+}
+
+impl<T> VirtualDevice for SynchronizedDevice<T>
+where
+    T: VirtualDevice + Send + Sync + 'static,
+{
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.lock().turn_on()
     }
 
-    #[inline]
-    pub fn write(&self) -> RwLockWriteGuard<T> {
-        self.device.write()
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.lock().turn_off()
     }
 
-    pub fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.write().turn_on()
-    }
-
-    pub fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.write().turn_off()
-    }
-
-    pub fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.read().check_is_on()
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.lock().check_is_on()
     }
 }
 
 impl VirtualDevice for Box<dyn VirtualDevice> {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref_mut().turn_on()
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref().turn_on()
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref_mut().turn_off()
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref().turn_off()
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
@@ -443,14 +442,14 @@ where
     T: VirtualDevice,
 {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.write().turn_on()
+        self.lock().turn_on()
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.write().turn_off()
+        self.lock().turn_off()
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.read().check_is_on()
+        self.lock().check_is_on()
     }
 }

@@ -82,13 +82,13 @@ impl Device {
         Self { ip }
     }
 
-    pub fn enter_standby(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn enter_standby(&self) -> Result<(), VirtualDeviceError> {
         let mut socket = self.connect()?;
         self.send_command(&mut socket, 99, 1, "ENTER_STANDBY")
             .map(|_| ())
     }
 
-    pub fn leave_standby(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn leave_standby(&self) -> Result<(), VirtualDeviceError> {
         let mut socket = self.connect()?;
         self.send_command(&mut socket, 99, 1, "LEAVE_STANDBY")
             .map(|_| ())
@@ -430,11 +430,11 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.leave_standby().map(|_| VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.enter_standby().map(|_| VirtualDeviceState::Off)
     }
 

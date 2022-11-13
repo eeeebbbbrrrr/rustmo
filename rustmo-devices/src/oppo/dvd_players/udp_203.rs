@@ -90,13 +90,13 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#PON")?;
         thread::sleep(Duration::from_secs(2));
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.send_command("#POF")?;
         thread::sleep(Duration::from_secs(2));
         Ok(VirtualDeviceState::Off)

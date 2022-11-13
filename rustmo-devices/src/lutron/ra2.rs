@@ -378,7 +378,7 @@ impl Device {
         }
     }
 
-    pub fn output_set(&mut self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
+    pub fn output_set(&self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let response = send_command(
             &mut telnet,
@@ -523,12 +523,12 @@ where
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.output_set(100.0, Duration::from_secs(2))?;
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.output_set(0.0, Duration::from_secs(2))?;
         Ok(VirtualDeviceState::Off)
     }

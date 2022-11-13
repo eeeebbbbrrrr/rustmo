@@ -48,13 +48,13 @@ impl MyDevice {
 }
 
 impl VirtualDevice for MyDevice {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         eprintln!("Turning on");
         self.state = VirtualDeviceState::On;
         Ok(self.state)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         eprintln!("Turning off");
         self.state = VirtualDeviceState::Off;
         Ok(self.state)

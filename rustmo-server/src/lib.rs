@@ -203,7 +203,7 @@ impl RustmoServer {
     ) -> Result<SynchronizedDevice<InstantOnDevice<T>>, RustmoError> {
         let virtual_device = InstantOnDevice {
             device: virtual_device,
-            believed_on: false,
+            believed_on: Default::default(),
         };
         self.internal_add_device(name, self.ip_address, virtual_device)
     }
@@ -227,8 +227,8 @@ impl RustmoServer {
         check_is_on: CheckIsOn,
     ) -> Result<SynchronizedDevice<FunctionalDevice<TurnOn, TurnOff, CheckIsOn>>, RustmoError>
     where
-        TurnOn: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
-        TurnOff: FnMut() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
+        TurnOff: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
         CheckIsOn: Fn() -> Result<VirtualDeviceState, VirtualDeviceError> + Sync + Send + 'static,
     {
         let virtual_device = FunctionalDevice {

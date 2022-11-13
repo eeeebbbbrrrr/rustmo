@@ -31,11 +31,11 @@ impl Device {
         Ok(status == 1)
     }
 
-    pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
         self.send_command("Z1POW1;", None).map(|_| ())
     }
 
-    pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
         self.send_command("Z1POW0;", Some("Z1POW")).map(|_| ())
     }
 
@@ -178,12 +178,12 @@ impl Device {
 }
 
 impl VirtualDevice for Device {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.power_on()?;
         Ok(VirtualDeviceState::On)
     }
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.power_off()?;
         Ok(VirtualDeviceState::Off)
     }
