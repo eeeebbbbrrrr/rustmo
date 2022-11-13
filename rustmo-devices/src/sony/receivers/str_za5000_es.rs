@@ -4,7 +4,7 @@ use rustmo_server::virtual_device::*;
 
 #[derive(Clone, Copy)]
 pub struct Device {
-    ip_address: IpAddr,
+    ip: IpAddr,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,8 +44,8 @@ struct VideoInputResponse {
 
 /// https://www.sony.com/electronics/av-receivers/str-za5000es
 impl Device {
-    pub fn new(ip_address: IpAddr) -> Self {
-        Device { ip_address }
+    pub fn new(ip: IpAddr) -> Self {
+        Device { ip: ip }
     }
 
     pub fn get_video_input(&self) -> Result<VideoInput, VirtualDeviceError> {
@@ -53,11 +53,10 @@ impl Device {
             return Ok(VideoInput::Unknown);
         }
 
-        let response =
-            ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
-                .send_string(
-                    "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.input\"}]}",
-                )?;
+        let response = ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
+            .send_string(
+            "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.input\"}]}",
+        )?;
 
         let response = response.into_string()?;
         let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
@@ -98,7 +97,7 @@ impl Device {
         };
 
         let body = format!("{{\"type\":\"http_set\",\"packet\":[{{\"id\":274,\"feature\":\"{str}\",\"value\":\"main\"}}]}}", str = str).clone();
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string(&body)?;
 
         if self.get_video_input()?.eq(input) {
@@ -109,7 +108,7 @@ impl Device {
     }
 
     pub fn volume_up(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.volumeup\",\"value\":\"main\"}]}")
             ?;
 
@@ -117,7 +116,7 @@ impl Device {
     }
 
     pub fn volume_down(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.volumedown\",\"value\":\"main\"}]}")
             ?;
 
@@ -125,7 +124,7 @@ impl Device {
     }
 
     pub fn toggle_mute(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"GUI.muting\",\"value\":\"main\"}]}")
             ?;
 
@@ -143,11 +142,10 @@ impl Device {
             return Ok(VirtualDeviceState::Off);
         }
 
-        let response =
-            ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
-                .send_string(
-                    "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.mute\"}]}",
-                )?;
+        let response = ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
+            .send_string(
+            "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.mute\"}]}",
+        )?;
 
         let response = response.into_string()?;
         let response: VideoInputResponse = serde_json::from_str(response.as_str())?;
@@ -170,7 +168,7 @@ impl Device {
 
 impl VirtualDevice for Device {
     fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"main.power\",\"value\":\"on\"}]}")
             ?;
 
@@ -178,7 +176,7 @@ impl VirtualDevice for Device {
     }
 
     fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
+        ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
             .send_string("{\"type\":\"http_set\",\"packet\":[{\"id\":267,\"feature\":\"main.power\",\"value\":\"off\"}]}")
             ?;
 
@@ -186,11 +184,10 @@ impl VirtualDevice for Device {
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        let response =
-            ureq::post(format!("http://{}/request.cgi", self.ip_address.to_string()).as_str())
-                .send_string(
-                    "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.input\"}]}",
-                )?;
+        let response = ureq::post(format!("http://{}/request.cgi", self.ip.to_string()).as_str())
+            .send_string(
+            "{\"type\":\"http_get\",\"packet\":[{\"id\":1,\"feature\":\"main.input\"}]}",
+        )?;
 
         if response.into_string()?.is_empty() {
             Ok(VirtualDeviceState::Off)

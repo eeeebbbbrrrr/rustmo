@@ -7,7 +7,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 pub struct Device {
-    ip_address: IpAddr,
+    ip: IpAddr,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -47,13 +47,13 @@ pub enum PicturePosition {
 // https://digis.ru/upload/iblock/53c/VPL-VW320,%20VW520_ProtocolManual.pdf
 // http://www.sonypremiumhome.com/projectors/VPL-VW675ES.php
 impl Device {
-    pub fn new(ip_address: IpAddr) -> Self {
-        Device { ip_address }
+    pub fn new(ip: IpAddr) -> Self {
+        Device { ip: ip }
     }
 
     fn open(&self) -> Result<TcpStream, VirtualDeviceError> {
         let stream = TcpStream::connect_timeout(
-            &SocketAddr::new(self.ip_address, 53484),
+            &SocketAddr::new(self.ip, 53484),
             Duration::from_millis(30000),
         )?;
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;

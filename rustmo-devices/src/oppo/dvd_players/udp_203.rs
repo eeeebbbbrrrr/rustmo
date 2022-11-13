@@ -10,14 +10,14 @@ const TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Copy)]
 pub struct Device {
-    ip_address: IpAddr,
+    ip: IpAddr,
 }
 
 /// http://download.oppodigital.com/UDP203/OPPO_UDP-20X_RS-232_and_IP_Control_Protocol.pdf
 /// https://www.oppodigital.com/blu-ray-udp-203/
 impl Device {
-    pub fn new(ip_address: IpAddr) -> Self {
-        Device { ip_address }
+    pub fn new(ip: IpAddr) -> Self {
+        Device { ip }
     }
 
     pub fn enter(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
@@ -73,8 +73,7 @@ impl Device {
         command: &'static str,
     ) -> Result<VirtualDeviceState, VirtualDeviceError> {
         tracing::info!("udp_203 command: {}", command);
-        let mut stream =
-            TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 23), TIMEOUT)?;
+        let mut stream = TcpStream::connect_timeout(&SocketAddr::new(self.ip, 23), TIMEOUT)?;
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all(format!("{}\r\n", command).as_ref())?;
 
@@ -104,8 +103,7 @@ impl VirtualDevice for Device {
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        let mut stream =
-            TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 23), TIMEOUT)?;
+        let mut stream = TcpStream::connect_timeout(&SocketAddr::new(self.ip, 23), TIMEOUT)?;
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all("#QPW\r\n".as_ref())?;
         let res = &mut [0 as u8; 32];
