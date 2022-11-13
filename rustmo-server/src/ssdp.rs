@@ -1,12 +1,10 @@
-use parking_lot::Mutex;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::thread;
 
 use net2::unix::UnixUdpBuilderExt;
 
-use crate::{RustmoDevice, RustmoDeviceInfo, VirtualDevice, VirtualDevicesList};
+use crate::{RustmoDeviceInfo, VirtualDevicesList};
 
 pub(crate) struct SsdpListener;
 

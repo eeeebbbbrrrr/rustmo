@@ -1,4 +1,3 @@
-use std::borrow::BorrowMut;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::AddrParseError;
 use std::num::{ParseFloatError, ParseIntError};
@@ -135,18 +134,15 @@ pub trait VirtualDevice: Sync + Send + 'static {
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 }
 
-impl VirtualDevice for Box<dyn VirtualDevice> {
-    fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref_mut().turn_on()
-    }
+pub trait SyncVirtualDevice: Sync + Send + 'static {
+    /// turn the device on
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 
-    fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref_mut().turn_off()
-    }
+    /// turn the device off
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 
-    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.deref().check_is_on()
-    }
+    /// is the device on?
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 }
 
 pub(crate) mod wrappers {
@@ -154,8 +150,6 @@ pub(crate) mod wrappers {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
     use std::time::Duration;
-
-    use rayon::prelude::*;
 
     use crate::virtual_device::{
         SynchronizedDevice, VirtualDevice, VirtualDeviceError, VirtualDeviceState,
@@ -387,7 +381,7 @@ pub(crate) mod wrappers {
 /// that is reference counted and guarded by a mutex, so that it can
 /// be shared across threads
 ///
-pub struct SynchronizedDevice<T> {
+pub struct SynchronizedDevice<T: ?Sized> {
     device: Arc<RwLock<T>>,
 }
 
@@ -434,15 +428,29 @@ where
     }
 }
 
-impl<T> VirtualDevice for SynchronizedDevice<T>
-where
-    T: VirtualDevice,
-{
+impl VirtualDevice for Box<dyn VirtualDevice> {
     fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.write().turn_on()
+        self.deref_mut().turn_on()
     }
 
     fn turn_off(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref_mut().turn_off()
+    }
+
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref().check_is_on()
+    }
+}
+
+impl<T> SyncVirtualDevice for SynchronizedDevice<T>
+where
+    T: VirtualDevice,
+{
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.write().turn_on()
+    }
+
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.write().turn_off()
     }
 

@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate serde_derive;
 
-use std::cell::UnsafeCell;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -13,7 +12,6 @@ use uuid::Uuid;
 use crate::ssdp::SsdpListener;
 use crate::upnp::*;
 use crate::virtual_device::wrappers::*;
-pub use crate::virtual_device::wrappers::*;
 use crate::virtual_device::*;
 
 mod ssdp;
@@ -30,11 +28,11 @@ pub struct RustmoDeviceInfo {
 
 pub struct RustmoDevice {
     pub(crate) info: RustmoDeviceInfo,
-    pub(crate) device: UnsafeCell<Box<dyn VirtualDevice>>,
+    pub(crate) device: Box<dyn SyncVirtualDevice>,
 }
 
-unsafe impl Send for RustmoDevice {}
-unsafe impl Sync for RustmoDevice {}
+// unsafe impl Send for RustmoDevice {}
+// unsafe impl Sync for RustmoDevice {}
 
 impl RustmoDevice {
     pub fn new<T: VirtualDevice, S: Into<String>>(
@@ -59,13 +57,10 @@ impl RustmoDevice {
             uuid: Uuid::from_slice(bytes.as_slice()).expect("failed to generate UUID"),
         };
 
-        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
+        let device: Box<dyn SyncVirtualDevice> = Box::new(virtual_device.clone());
         let info = device_info.clone();
         thread::spawn(move || {
-            let device = RustmoDevice {
-                info,
-                device: UnsafeCell::new(device),
-            };
+            let device = RustmoDevice { info, device };
 
             let server = match hyper::Server::http(SocketAddr::new(ip_address, port)) {
                 Ok(server) => server,
@@ -77,23 +72,23 @@ impl RustmoDevice {
             server.handle(DeviceHttpServerHandler::new(device)).unwrap();
         });
 
-        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
+        let device: Box<dyn SyncVirtualDevice> = Box::new(virtual_device.clone());
         RustmoDevice {
             info: device_info,
-            device: UnsafeCell::new(device),
+            device,
         }
     }
 
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        unsafe { self.device.get().as_mut().unwrap_unchecked().turn_on() }
+        self.device.turn_on()
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        unsafe { self.device.get().as_mut().unwrap_unchecked().turn_off() }
+        self.device.turn_off()
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        unsafe { self.device.get().as_ref().unwrap_unchecked().check_is_on() }
+        self.device.check_is_on()
     }
 }
 

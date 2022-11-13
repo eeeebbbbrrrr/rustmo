@@ -1,13 +1,16 @@
 #![allow(dead_code)]
-use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use serde::de::{Error, Unexpected, Visitor};
-use serde::Deserializer;
+
 use std::fmt::Formatter;
 use std::net::{IpAddr, SocketAddr};
 use std::panic::catch_unwind;
 use std::path::Path;
 use std::time::Duration;
+
+use serde::de::{Error, Unexpected, Visitor};
+use serde::Deserializer;
 use telnet::Event;
+
+use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 #[derive(Debug, Clone)]
 pub struct Ra2MainRepeater {
@@ -233,6 +236,7 @@ impl Ra2MainRepeater {
 
     pub fn monitor_output(
         &self,
+        timeout: Duration,
     ) -> Result<crossbeam::channel::Receiver<OutputEvent>, VirtualDeviceError> {
         let ip = self.ip;
         let username = self.username.clone();
@@ -266,7 +270,7 @@ impl Ra2MainRepeater {
                 }
                 Ok::<(), VirtualDeviceError>(())
             });
-            std::thread::sleep(Duration::from_millis(3000));
+            std::thread::sleep(timeout.clone());
             eprintln!("LUTRON MONITOR RESULT: {:?}", result);
         });
 
@@ -293,7 +297,7 @@ impl Ra2MainRepeater {
 }
 
 impl Project {
-    pub fn into_iter(mut self) -> impl Iterator<Item = Device> {
+    pub fn into_iter(self) -> impl Iterator<Item = Device> {
         let project = self;
         let mut devices = Vec::new();
 

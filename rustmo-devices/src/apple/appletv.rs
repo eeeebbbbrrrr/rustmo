@@ -1,6 +1,7 @@
-use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::process::Command;
+
+use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 #[derive(Clone)]
 pub struct Device {

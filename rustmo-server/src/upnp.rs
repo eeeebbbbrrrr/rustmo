@@ -5,7 +5,7 @@ use hyper::server::{Fresh, Handler, Request, Response};
 use regex::Regex;
 use serde_xml_rs::from_reader;
 
-use crate::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
+use crate::virtual_device::{VirtualDeviceError, VirtualDeviceState};
 use crate::RustmoDevice;
 
 #[derive(Debug, Deserialize)]

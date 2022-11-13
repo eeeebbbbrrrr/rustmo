@@ -1,8 +1,10 @@
-use byteorder::ReadBytesExt;
-use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
+
+use byteorder::ReadBytesExt;
+
+use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 pub struct Device {
     ip: IpAddr,
@@ -135,11 +137,11 @@ impl Device {
         if expected.is_none() {
             return Ok(String::new());
         }
+        let mut retries = 0;
         loop {
             let buf = Self::read_response(socket)?;
             let response = String::from_utf8_lossy(&buf).to_string();
             eprintln!("AVM RESPONSE: /{}/", response);
-            let mut retries = 0;
             return match expected {
                 Some(expected) if response.starts_with(expected) => {
                     Ok(response.trim_start_matches(expected).to_string())

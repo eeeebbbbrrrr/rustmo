@@ -1,8 +1,8 @@
-use byteorder::WriteBytesExt;
-use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use std::io::{BufRead, BufReader, ErrorKind, LineWriter, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::io::{BufRead, BufReader, LineWriter, Write};
+use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
+
+use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 #[derive(Copy, Clone)]
 pub struct Device {
@@ -59,7 +59,7 @@ impl Device {
         let _ar = parts.next().unwrap();
         let _resolution = parts.next().unwrap();
         let _float = parts.next().unwrap();
-        let mut ar_int = parts.next().unwrap().parse::<usize>()?;
+        let ar_int = parts.next().unwrap().parse::<usize>()?;
 
         match KNOWN_ARS.binary_search(&ar_int) {
             Ok(_) => Ok(ar_int),
@@ -72,7 +72,7 @@ impl Device {
         command: B,
         expect_response: bool,
     ) -> Result<Vec<String>, VirtualDeviceError> {
-        let mut socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
+        let socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
 
         let mut reader = BufReader::new(socket.try_clone()?);
@@ -133,7 +133,6 @@ impl Device {
 
 impl VirtualDevice for Device {
     fn turn_on(&mut self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        todo!("How to turn madvr on?")
         // Ok(VirtualDeviceState::On)
     }
 
