@@ -72,6 +72,7 @@ impl Device {
         &self,
         command: &'static str,
     ) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        tracing::info!("udp_203 command: {}", command);
         let mut stream =
             TcpStream::connect_timeout(&SocketAddr::new(self.ip_address, 23), TIMEOUT)?;
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;

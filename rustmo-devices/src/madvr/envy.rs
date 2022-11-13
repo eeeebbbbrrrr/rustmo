@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io::{BufRead, BufReader, LineWriter, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
@@ -54,7 +55,7 @@ impl Device {
         static KNOWN_ARS: &[usize] = &[
             119, 133, 137, 143, 166, 177, 185, 200, 220, 235, 240, 255, 266, 276,
         ];
-        eprintln!("MADVR NEAREST AR LINE: {ar}");
+        tracing::debug!("MADVR NEAREST AR LINE: {ar}");
         let mut parts = ar.split(' ');
         let _ar = parts.next().unwrap();
         let _resolution = parts.next().unwrap();
@@ -67,11 +68,15 @@ impl Device {
         }
     }
 
-    fn send_command<B: AsRef<[u8]>>(
+    fn send_command<B: AsRef<[u8]> + Debug>(
         &self,
         command: B,
         expect_response: bool,
     ) -> Result<Vec<String>, VirtualDeviceError> {
+        tracing::info!(
+            "envy command: {}",
+            String::from_utf8_lossy(command.as_ref())
+        );
         let socket = TcpStream::connect(&SocketAddr::new(self.ip, 44077))?;
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
 
@@ -81,7 +86,7 @@ impl Device {
         // consume WELCOME message
         let mut welcome = String::new();
         reader.read_line(&mut welcome)?;
-        eprintln!("ENVY:  got welcome={}", welcome);
+        tracing::debug!("ENVY:  got welcome={}", welcome);
 
         std::thread::sleep(Duration::from_millis(300));
 
@@ -90,19 +95,19 @@ impl Device {
         writer.write_all(b"\r\n")?;
         writer.flush()?;
 
-        eprintln!(
+        tracing::debug!(
             "ENVY:  send command={}",
             String::from_utf8_lossy(command.as_ref())
         );
         let mut responses = Vec::new();
         let mut got_ok = false;
-        eprintln!("ENVY:  starting to read");
+        tracing::debug!("ENVY:  starting to read");
         for line in reader.lines() {
-            eprintln!("   ENVY line={:?}", line);
+            tracing::debug!("   ENVY line={:?}", line);
             let line = match line {
                 Ok(line) => line,
                 Err(e) => {
-                    eprintln!("ENVY error={:?}", e.kind());
+                    tracing::debug!("ENVY error={:?}", e.kind());
                     return Err(VirtualDeviceError::from(format!("{:?}", e)));
                 }
             };

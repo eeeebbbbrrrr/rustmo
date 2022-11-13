@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use std::fmt::Formatter;
+use std::fmt::{Debug, Formatter};
 use std::net::{IpAddr, SocketAddr};
+use std::ops::{Deref, DerefMut};
 use std::panic::catch_unwind;
 use std::path::Path;
 use std::time::Duration;
@@ -11,6 +12,30 @@ use serde::Deserializer;
 use telnet::Event;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
+
+struct MyTelnet {
+    inner: telnet::Telnet,
+}
+
+impl Deref for MyTelnet {
+    type Target = telnet::Telnet;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for MyTelnet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl Debug for MyTelnet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Telnet()")
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Ra2MainRepeater {
@@ -244,19 +269,20 @@ impl Ra2MainRepeater {
         let (sender, receiver) = crossbeam::channel::bounded(100);
 
         std::thread::spawn(move || loop {
-            eprintln!("STARTING LUTRON MONITOR");
+            tracing::info!("STARTING LUTRON MONITOR");
             let result = catch_unwind(|| {
                 let mut telnet = login(ip, &username, &password)?;
-                while let Event::Data(data) = telnet.read_timeout(Duration::from_millis(1000))? {
+                while let Event::Data(data) = telnet.read()? {
                     let response = String::from_utf8_lossy(&data).to_string();
                     if response.starts_with("~OUTPUT") {
                         let response = response.trim();
-                        eprintln!("LUTRON MONITOR LINE: {}", response);
+                        tracing::debug!("LUTRON MONITOR LINE: {}", response);
                         let mut parts = response.split(',');
                         let _ = parts.next().unwrap();
                         let id: usize = parts.next().unwrap().parse()?;
                         let action: usize = parts.next().unwrap().parse()?;
                         if action == 1 {
+                            tracing::info!("lutron light {id} changed");
                             let percent: f64 = parts.next().unwrap().parse()?;
                             sender
                                 .send(if percent > 0.0 {
@@ -271,7 +297,7 @@ impl Ra2MainRepeater {
                 Ok::<(), VirtualDeviceError>(())
             });
             std::thread::sleep(timeout.clone());
-            eprintln!("LUTRON MONITOR RESULT: {:?}", result);
+            tracing::info!("LUTRON MONITOR RESULT: {:?}", result);
         });
 
         Ok(receiver)
@@ -285,7 +311,7 @@ impl Ra2MainRepeater {
         Ok(project)
     }
 
-    pub fn describe_from_file<P: AsRef<Path>>(
+    pub fn describe_from_file<P: AsRef<Path> + Debug>(
         &mut self,
         path: P,
     ) -> Result<Project, VirtualDeviceError> {
@@ -352,23 +378,13 @@ impl Device {
         }
     }
 
-    pub fn copy(&self) -> Self {
-        Device {
-            ip: self.ip.clone(),
-            uid: self.uid.clone(),
-            upw: self.upw.clone(),
-            name: self.name.clone(),
-            id: self.id,
-        }
-    }
-
     pub fn output_set(&mut self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let response = send_command(
             &mut telnet,
             &format!("#OUTPUT,{},1,{},{}", self.id, percent, ttl.as_secs()),
         )?;
-        eprintln!("{:#?}", response);
+        tracing::debug!("{:#?}", response);
         Ok(())
     }
 
@@ -381,13 +397,13 @@ impl Device {
             .collect::<String>();
         let response = response.trim();
 
-        eprintln!("LUTRON OUTPUT RESPONSE for {}: /{}/", self.id, response);
+        tracing::debug!("LUTRON OUTPUT RESPONSE for {}: /{}/", self.id, response);
         if response.is_empty() {
             return Err(VirtualDeviceError::new("empty response from lutron"));
         }
 
         match catch_unwind(|| {
-            eprintln!("LUTRON RESPONSE: /{}/", response);
+            tracing::debug!("LUTRON RESPONSE: /{}/", response);
             let mut parts = response.split(',');
             let _command = parts.next().unwrap();
             let _id = parts.next().unwrap();
@@ -397,7 +413,7 @@ impl Device {
         }) {
             Ok(percent) => Ok(percent?),
             Err(e) => {
-                eprintln!("OUTPUT_GET ERROR: {:?}", e);
+                tracing::debug!("OUTPUT_GET ERROR: {:?}", e);
                 Err(VirtualDeviceError::from(format!("{:?}", e)))
             }
         }
@@ -412,17 +428,19 @@ impl Device {
     }
 }
 
-fn login(ip: IpAddr, uid: &str, upw: &str) -> Result<telnet::Telnet, VirtualDeviceError> {
-    let mut telnet = telnet::Telnet::connect_timeout(
-        &SocketAddr::new(ip, 23),
-        1024,
-        Duration::from_millis(1000),
-    )?;
+fn login(ip: IpAddr, uid: &str, upw: &str) -> Result<MyTelnet, VirtualDeviceError> {
+    let mut telnet = MyTelnet {
+        inner: telnet::Telnet::connect_timeout(
+            &SocketAddr::new(ip, 23),
+            1024,
+            Duration::from_millis(1000),
+        )?,
+    };
 
     loop {
         let event = telnet.read_timeout(Duration::from_millis(1000))?;
         if let Event::Data(bytes) = event {
-            eprintln!("LUTRON EVENT DATA: {:?}", String::from_utf8_lossy(&bytes));
+            tracing::debug!("LUTRON EVENT DATA: {:?}", String::from_utf8_lossy(&bytes));
             match bytes.as_ref() {
                 b"login: " => send_line(&mut telnet, uid)?,
                 b"password: " => send_line(&mut telnet, upw)?,
@@ -451,17 +469,14 @@ fn login(ip: IpAddr, uid: &str, upw: &str) -> Result<telnet::Telnet, VirtualDevi
     Ok(telnet)
 }
 
-fn send_line(telnet: &mut telnet::Telnet, line: &str) -> Result<(), VirtualDeviceError> {
+fn send_line(telnet: &mut MyTelnet, line: &str) -> Result<(), VirtualDeviceError> {
     telnet.write(line.as_bytes())?;
     telnet.write(b"\r\n")?;
     Ok(())
 }
 
-fn send_command(
-    telnet: &mut telnet::Telnet,
-    command: &str,
-) -> Result<Vec<String>, VirtualDeviceError> {
-    eprintln!("LUTRON COMMAND: {}", command);
+fn send_command(telnet: &mut MyTelnet, command: &str) -> Result<Vec<String>, VirtualDeviceError> {
+    tracing::info!("lutron command: {}", command);
     telnet.write(command.as_bytes())?;
     telnet.write(b"\r\n")?;
 
@@ -487,7 +502,7 @@ where
         type Value = bool;
 
         fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-            write!(formatter, "an boolean")
+            write!(formatter, "a boolean")
         }
 
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

@@ -191,7 +191,7 @@ impl Device {
         stream.flush()?;
         let (_len, mut data) = Device::read_response(&mut stream)?;
         let code = data.read_u16::<BigEndian>()?;
-        eprintln!("{:#04X?}", data.into_inner());
+        tracing::debug!("{:#04X?}", data.into_inner());
         Ok(match code {
             0x0000 => PicturePosition::Aspect185_1,
             0x0001 => PicturePosition::Aspect235_1,
@@ -373,6 +373,7 @@ impl Device {
         ];
         bytes.extend_from_slice(data);
 
+        tracing::info!("pj_talk command: {:?}", bytes);
         bytes
     }
 }

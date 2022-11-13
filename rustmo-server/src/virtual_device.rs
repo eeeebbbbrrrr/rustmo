@@ -203,7 +203,6 @@ pub(crate) mod wrappers {
         }
 
         fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-            eprintln!("INSTANT: {}", self.believed_on);
             if self.believed_on {
                 return Ok(VirtualDeviceState::On);
             }
@@ -244,8 +243,6 @@ pub(crate) mod wrappers {
                 VirtualDeviceState::Off => {
                     let mut cnt = 0;
                     while state.eq(&VirtualDeviceState::Off) {
-                        eprintln!("POLLING for 'on': cnt={}", cnt);
-
                         thread::sleep(Duration::from_millis(400));
                         state = self.device.check_is_on().unwrap_or(VirtualDeviceState::Off);
                         cnt += 1;
@@ -267,7 +264,6 @@ pub(crate) mod wrappers {
                 VirtualDeviceState::On => {
                     let mut cnt = 0;
                     while state.eq(&VirtualDeviceState::On) {
-                        eprintln!("POLLING for 'off': cnt={}", cnt);
                         thread::sleep(Duration::from_millis(400));
 
                         state = self.device.check_is_on().unwrap_or(VirtualDeviceState::On);

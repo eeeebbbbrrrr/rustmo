@@ -39,8 +39,8 @@ unsafe impl Send for DeviceHttpServerHandler {}
 
 impl Handler for DeviceHttpServerHandler {
     fn handle<'r, 'k>(&'r self, mut request: Request<'r, 'k>, mut response: Response<'r, Fresh>) {
-        eprintln!(
-            "REQUEST: http://{}:{}{} from {}",
+        tracing::info!(
+            "UPNP request: http://{}:{}{} from {}",
             self.device.info.ip_address.to_string(),
             self.device.info.port,
             request.uri.to_string(),
@@ -52,7 +52,7 @@ impl Handler for DeviceHttpServerHandler {
             "/metainfoservice.xml" => Some(self.handle_metainfoservice()),
             "/upnp/control/basicevent1" => Some(self.handle_basicevent(request.borrow_mut())),
             _ => {
-                eprintln!("Unrecognized request: {:?}", request.uri);
+                tracing::warn!("Unrecognized request: {:?}", request.uri);
                 *response.status_mut() = hyper::status::StatusCode::NotFound;
                 None
             }
@@ -91,8 +91,8 @@ impl DeviceHttpServerHandler {
         let get_or_set;
         let on_off = match action {
             "GetBinaryState" => {
-                eprintln!(
-                    "GET_BINARY_STATE: {} by {}",
+                tracing::info!(
+                    "UPNP get binary state: {} by {}",
                     self.device.info.name,
                     request.remote_addr.ip().to_string()
                 );
@@ -105,15 +105,15 @@ impl DeviceHttpServerHandler {
                 match envelope.body.set_binary_state {
                     Some(state) => {
                         if state.binary_state == 1 {
-                            eprintln!(
-                                "TURN_ON: {} by {}",
+                            tracing::info!(
+                                "UPNP turn on: {} by {}",
                                 self.device.info.name,
                                 request.remote_addr.ip().to_string()
                             );
                             self.device.turn_on()
                         } else {
-                            eprintln!(
-                                "TURN_OFF: {} by {}",
+                            tracing::info!(
+                                "PNP turn off: {} by {}",
                                 self.device.info.name,
                                 request.remote_addr.ip().to_string()
                             );
@@ -126,10 +126,7 @@ impl DeviceHttpServerHandler {
                 }
             }
             capture => {
-                eprintln!(
-                    "ERROR:  Unknown capture value: /{}/ from /{}/",
-                    capture, action
-                );
+                tracing::error!("Unknown capture value: /{}/ from /{}/", capture, action);
                 return vec![];
             }
         };
@@ -137,7 +134,7 @@ impl DeviceHttpServerHandler {
         match on_off {
             Ok(state) => DeviceHttpServerHandler::make_basicevent_response(state, get_or_set),
             Err(e) => {
-                eprintln!("ERROR:  Problem with {}: {}", self.device.info.name, e.0);
+                tracing::error!("Problem with {}: {}", self.device.info.name, e.0);
                 return vec![];
             }
         }
@@ -164,7 +161,7 @@ impl DeviceHttpServerHandler {
     }
 
     fn handle_setup(&self) -> Vec<u8> {
-        eprintln!("SETUP: {}", self.device.info.name);
+        tracing::info!("UPNP set: {}", self.device.info.name);
         format!(
             "<root>
                 <device>
@@ -196,7 +193,7 @@ impl DeviceHttpServerHandler {
     }
 
     fn handle_eventservice(&self) -> Vec<u8> {
-        eprintln!("EVENTSERVICE: {}", self.device.info.name);
+        tracing::info!("UPNP eventservice: {}", self.device.info.name);
         "<scpd xmlns='urn:Belkin:service-1-0'>
             <actionList>
                 <action>
@@ -240,7 +237,7 @@ impl DeviceHttpServerHandler {
     }
 
     fn handle_metainfoservice(&self) -> Vec<u8> {
-        eprintln!("NETAINFO: {}", self.device.info.name);
+        tracing::info!("UPNP meta info service: {}", self.device.info.name);
         "<scpd xmlns='urn:Belkin:service-1-0'>
             <specVersion>
                 <major>1</major>

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::process::Command;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
@@ -173,7 +174,8 @@ impl Device {
         map
     }
 
-    fn exec<S: Into<String>>(&self, args: Vec<S>) -> Result<String, VirtualDeviceError> {
+    fn exec<S: Into<String> + Debug>(&self, args: Vec<S>) -> Result<String, VirtualDeviceError> {
+        tracing::info!("appletv: {:?}", args);
         let mut command = Command::new("atvremote");
 
         command
@@ -187,7 +189,7 @@ impl Device {
             .arg(&self.companion_creds)
             .args(args.into_iter().map(|a| a.into()));
 
-        eprintln!("APPLETV COMMAND: {:?}", command);
+        tracing::debug!("APPLETV COMMAND: {:?}", command);
         let output = command.output()?;
         if output.status.success() {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();

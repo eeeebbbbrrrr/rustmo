@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io::Write;
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
@@ -6,10 +7,12 @@ use byteorder::ReadBytesExt;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
+#[derive(Debug)]
 pub struct Device {
     ip: IpAddr,
 }
 
+#[derive(Debug)]
 struct MySocket(TcpStream);
 
 impl Drop for MySocket {
@@ -102,7 +105,7 @@ impl Device {
         Ok(MySocket(socket))
     }
 
-    fn send_command<B: AsRef<[u8]>>(
+    fn send_command<B: AsRef<[u8]> + Debug>(
         &self,
         command: B,
         expected: Option<&str>,
@@ -111,13 +114,13 @@ impl Device {
         self.send_command_with_socket(&mut socket, command, expected)
     }
 
-    fn send_command_with_socket<B: AsRef<[u8]>>(
+    fn send_command_with_socket<B: AsRef<[u8]> + Debug>(
         &self,
         socket: &mut MySocket,
         command: B,
         expected: Option<&str>,
     ) -> Result<String, VirtualDeviceError> {
-        eprintln!("WRITING: {}", String::from_utf8_lossy(command.as_ref()));
+        tracing::info!("avm70: {}", String::from_utf8_lossy(command.as_ref()));
         let bytes = command.as_ref();
         if bytes[bytes.len() - 1] != b';' {
             return Err(VirtualDeviceError::from(format!(
@@ -141,7 +144,7 @@ impl Device {
         loop {
             let buf = Self::read_response(socket)?;
             let response = String::from_utf8_lossy(&buf).to_string();
-            eprintln!("AVM RESPONSE: /{}/", response);
+            tracing::debug!("AVM RESPONSE: /{}/", response);
             return match expected {
                 Some(expected) if response.starts_with(expected) => {
                     Ok(response.trim_start_matches(expected).to_string())
@@ -150,7 +153,7 @@ impl Device {
                 Some(_) if retries == 10 => Err(VirtualDeviceError::from("Too many retries")),
                 Some(_) => {
                     // we got some other, likely async, response
-                    eprintln!("AVM ASYNC RESPONSE: /{}/", response);
+                    tracing::debug!("AVM ASYNC RESPONSE: /{}/", response);
 
                     // so try again
                     retries += 1;

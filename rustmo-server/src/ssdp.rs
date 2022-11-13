@@ -46,7 +46,7 @@ impl SsdpListener {
                     .expect("problem receiving data while listening");
                 let dgram = String::from_utf8_lossy(&buf[..len]).to_string();
 
-                // eprintln!("DISCOVERY FROM: {}:{}", src.ip(), src.port());
+                tracing::info!("SSDP discovery from {}:{}", src.ip(), src.port());
                 if SsdpListener::is_discovery_request(dgram) {
                     // someone wants to know what devices we have
                     for device in devices.read().iter() {
