@@ -4,6 +4,7 @@ extern crate serde_derive;
 
 pub mod anthem;
 pub mod apple;
+pub mod kaleidescape;
 pub mod lutron;
 pub mod madvr;
 pub mod oppo;

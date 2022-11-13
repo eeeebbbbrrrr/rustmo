@@ -11,14 +11,18 @@ repository = "https://github.com/eeeebbbbrrrr/rustmo"
 readme = "README.md"
 
 [dependencies]
-rustmo-server = {version = "0.1.1", path = "../rustmo-server" }
 byteorder = "1.4.3"
-ureq = "2.5.0"
+crossbeam = "0.8.2"
+enum-primitive-derive = "0.2.2"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
+parking_lot = "0.12.1"
+rustmo-server = {version = "0.1.1", path = "../rustmo-server" }
+scraper = "0.13.0"
 serde = "1.0.147"
+serde-xml-rs = "0.6.0"
 serde_derive = "1.0.147"
 serde_json = "1.0.87"
-serde-xml-rs = "0.6.0"
 telnet = "0.2.1"
-crossbeam = "0.8.2"
-parking_lot = "0.12.1"
 tracing = "0.1.37"
+ureq = "2.5.0"
