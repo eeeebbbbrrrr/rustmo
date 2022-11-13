@@ -4,7 +4,7 @@ use std::process::Command;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Device {
     id: String,
     raop_creds: String,

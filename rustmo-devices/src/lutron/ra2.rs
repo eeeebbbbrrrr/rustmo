@@ -44,7 +44,7 @@ pub struct Ra2MainRepeater {
     password: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
     uid: String,

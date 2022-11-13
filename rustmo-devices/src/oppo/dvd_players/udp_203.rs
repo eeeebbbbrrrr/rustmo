@@ -8,7 +8,7 @@ use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDe
 
 const TIMEOUT: Duration = Duration::from_secs(4);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
 }

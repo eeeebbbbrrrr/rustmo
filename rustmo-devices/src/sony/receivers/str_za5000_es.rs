@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use rustmo_server::virtual_device::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
 }

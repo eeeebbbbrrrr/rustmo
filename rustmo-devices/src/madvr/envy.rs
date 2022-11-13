@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
 }

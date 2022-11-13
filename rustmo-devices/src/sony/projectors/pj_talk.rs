@@ -6,6 +6,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
+#[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
 }
