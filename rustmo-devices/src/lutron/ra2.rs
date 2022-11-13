@@ -40,8 +40,8 @@ impl Debug for MyTelnet {
 #[derive(Debug, Clone)]
 pub struct Ra2MainRepeater {
     ip: IpAddr,
-    username: String,
-    password: String,
+    uid: String,
+    upw: String,
 }
 
 #[derive(Clone, Debug)]
@@ -254,9 +254,39 @@ impl Ra2MainRepeater {
     pub fn new(ip: IpAddr, username: &str, password: &str) -> Self {
         Ra2MainRepeater {
             ip,
-            username: username.to_string(),
-            password: password.to_string(),
+            uid: username.to_string(),
+            upw: password.to_string(),
         }
+    }
+
+    pub fn turn_on_light(
+        &self,
+        id: usize,
+        percent: f32,
+        ttl: Duration,
+    ) -> Result<(), VirtualDeviceError> {
+        output_set(self.ip, &self.uid, &self.upw, id, percent, ttl)
+    }
+
+    pub fn turn_off_light(&self, id: usize) -> Result<(), VirtualDeviceError> {
+        output_set(
+            self.ip,
+            &self.uid,
+            &self.upw,
+            id,
+            0.0,
+            Duration::from_secs(0),
+        )
+    }
+
+    pub fn light_state(&self, id: usize) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        output_get(self.ip, &self.uid, &self.upw, id).map(|v| {
+            if v > 0.0 {
+                VirtualDeviceState::On
+            } else {
+                VirtualDeviceState::Off
+            }
+        })
     }
 
     pub fn monitor_output(
@@ -264,12 +294,12 @@ impl Ra2MainRepeater {
         timeout: Duration,
     ) -> Result<crossbeam::channel::Receiver<OutputEvent>, VirtualDeviceError> {
         let ip = self.ip;
-        let username = self.username.clone();
-        let password = self.password.clone();
+        let username = self.uid.clone();
+        let password = self.upw.clone();
         let (sender, receiver) = crossbeam::channel::bounded(100);
 
         std::thread::spawn(move || loop {
-            tracing::info!("STARTING LUTRON MONITOR");
+            tracing::info!("starting lutron monitor");
             let result = catch_unwind(|| {
                 let mut telnet = login(ip, &username, &password)?;
                 while let Event::Data(data) = telnet.read()? {
@@ -304,7 +334,7 @@ impl Ra2MainRepeater {
     }
 
     pub fn describe(&self) -> Result<Project, VirtualDeviceError> {
-        let mut telnet = login(self.ip, &self.username, &self.password)?;
+        let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
         let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
         project.ra2 = Some(self.clone());
@@ -312,11 +342,15 @@ impl Ra2MainRepeater {
     }
 
     pub fn describe_from_file<P: AsRef<Path> + Debug>(
-        &mut self,
+        &self,
         path: P,
     ) -> Result<Project, VirtualDeviceError> {
         let xml = std::fs::read_to_string(path.as_ref())?;
-        let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
+        self.describe_from_xml(&xml)
+    }
+
+    pub fn describe_from_xml(&self, xml: &str) -> Result<Project, VirtualDeviceError> {
+        let mut project = serde_xml_rs::from_str::<Project>(xml)?;
         project.ra2 = Some(self.clone());
         Ok(project)
     }
@@ -337,8 +371,8 @@ impl Project {
                 for output in &area.outputs.children {
                     devices.push(Device::new(
                         ra2.ip,
-                        &ra2.username,
-                        &ra2.password,
+                        &ra2.uid,
+                        &ra2.upw,
                         format!("{} {} {}", name, area.name, output.name)
                             .trim()
                             .to_string(),
@@ -378,45 +412,29 @@ impl Device {
         }
     }
 
-    pub fn output_set(&self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
-        let mut telnet = login(self.ip, &self.uid, &self.upw)?;
-        let response = send_command(
-            &mut telnet,
-            &format!("#OUTPUT,{},1,{},{}", self.id, percent, ttl.as_secs()),
-        )?;
-        tracing::debug!("{:#?}", response);
-        Ok(())
+    pub fn turn_off(&self) -> Result<(), VirtualDeviceError> {
+        output_set(
+            self.ip,
+            &self.uid,
+            &self.upw,
+            self.id,
+            0.0,
+            Duration::from_secs(0),
+        )
     }
 
-    pub fn output_get(&self) -> Result<f32, VirtualDeviceError> {
-        let mut telnet = login(self.ip, &self.uid, &self.upw)?;
-        let response = send_command(&mut telnet, &format!("?OUTPUT,{},1", self.id))?
-            .into_iter()
-            .filter(|line| line.starts_with(&format!("~OUTPUT,{}", self.id)))
-            .map(|line| line.trim().to_string())
-            .collect::<String>();
-        let response = response.trim();
+    pub fn turn_on(&self, percent: f32, ttl: Duration) -> Result<(), VirtualDeviceError> {
+        output_set(self.ip, &self.uid, &self.upw, self.id, percent, ttl)
+    }
 
-        tracing::debug!("LUTRON OUTPUT RESPONSE for {}: /{}/", self.id, response);
-        if response.is_empty() {
-            return Err(VirtualDeviceError::new("empty response from lutron"));
-        }
-
-        match catch_unwind(|| {
-            tracing::debug!("LUTRON RESPONSE: /{}/", response);
-            let mut parts = response.split(',');
-            let _command = parts.next().unwrap();
-            let _id = parts.next().unwrap();
-            let _action = parts.next().unwrap();
-            let percent = parts.next().unwrap();
-            percent.parse()
-        }) {
-            Ok(percent) => Ok(percent?),
-            Err(e) => {
-                tracing::debug!("OUTPUT_GET ERROR: {:?}", e);
-                Err(VirtualDeviceError::from(format!("{:?}", e)))
+    pub fn state(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        output_get(self.ip, &self.uid, &self.upw, self.id).map(|v| {
+            if v > 0.0 {
+                VirtualDeviceState::On
+            } else {
+                VirtualDeviceState::Off
             }
-        }
+        })
     }
 
     pub fn name(&self) -> &str {
@@ -425,6 +443,54 @@ impl Device {
 
     pub fn id(&self) -> usize {
         self.id
+    }
+}
+
+pub fn output_set(
+    ip: IpAddr,
+    uid: &str,
+    upw: &str,
+    id: usize,
+    percent: f32,
+    ttl: Duration,
+) -> Result<(), VirtualDeviceError> {
+    let mut telnet = login(ip, &uid, &upw)?;
+    let response = send_command(
+        &mut telnet,
+        &format!("#OUTPUT,{},1,{},{}", id, percent, ttl.as_secs()),
+    )?;
+    tracing::debug!("{:#?}", response);
+    Ok(())
+}
+
+pub fn output_get(ip: IpAddr, uid: &str, upw: &str, id: usize) -> Result<f32, VirtualDeviceError> {
+    let mut telnet = login(ip, &uid, &upw)?;
+    let response = send_command(&mut telnet, &format!("?OUTPUT,{},1", id))?
+        .into_iter()
+        .filter(|line| line.starts_with(&format!("~OUTPUT,{}", id)))
+        .map(|line| line.trim().to_string())
+        .collect::<String>();
+    let response = response.trim();
+
+    tracing::debug!("LUTRON OUTPUT RESPONSE for {}: /{}/", id, response);
+    if response.is_empty() {
+        return Err(VirtualDeviceError::new("empty response from lutron"));
+    }
+
+    match catch_unwind(|| {
+        tracing::debug!("LUTRON RESPONSE: /{}/", response);
+        let mut parts = response.split(',');
+        let _command = parts.next().unwrap();
+        let _id = parts.next().unwrap();
+        let _action = parts.next().unwrap();
+        let percent = parts.next().unwrap();
+        percent.parse()
+    }) {
+        Ok(percent) => Ok(percent?),
+        Err(e) => {
+            tracing::debug!("OUTPUT_GET ERROR: {:?}", e);
+            Err(VirtualDeviceError::from(format!("{:?}", e)))
+        }
     }
 }
 
@@ -522,22 +588,33 @@ where
     input.deserialize_str(V)
 }
 
-impl VirtualDevice for Device {
+impl VirtualDevice for Ra2MainRepeater {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.output_set(100.0, Duration::from_secs(2))?;
         Ok(VirtualDeviceState::On)
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.output_set(0.0, Duration::from_secs(2))?;
+        // doesn't turn off
+        Ok(VirtualDeviceState::On)
+    }
+
+    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        Ok(VirtualDeviceState::On)
+    }
+}
+
+impl VirtualDevice for Device {
+    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.turn_on(33.0, Duration::from_secs(3))?;
+        Ok(VirtualDeviceState::On)
+    }
+
+    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.turn_off()?;
         Ok(VirtualDeviceState::Off)
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        if self.output_get()? > 0.0 {
-            Ok(VirtualDeviceState::On)
-        } else {
-            Ok(VirtualDeviceState::Off)
-        }
+        self.state()
     }
 }
