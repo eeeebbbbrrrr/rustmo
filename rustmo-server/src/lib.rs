@@ -28,7 +28,7 @@ pub struct RustmoDeviceInfo {
 
 pub struct RustmoDevice {
     pub(crate) info: RustmoDeviceInfo,
-    pub(crate) device: Box<dyn SyncVirtualDevice>,
+    pub(crate) device: Box<dyn VirtualDevice>,
 }
 
 // unsafe impl Send for RustmoDevice {}
@@ -57,7 +57,7 @@ impl RustmoDevice {
             uuid: Uuid::from_slice(bytes.as_slice()).expect("failed to generate UUID"),
         };
 
-        let device: Box<dyn SyncVirtualDevice> = Box::new(virtual_device.clone());
+        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
         let info = device_info.clone();
         thread::spawn(move || {
             let device = RustmoDevice { info, device };
@@ -72,7 +72,7 @@ impl RustmoDevice {
             server.handle(DeviceHttpServerHandler::new(device)).unwrap();
         });
 
-        let device: Box<dyn SyncVirtualDevice> = Box::new(virtual_device.clone());
+        let device: Box<dyn VirtualDevice> = Box::new(virtual_device.clone());
         RustmoDevice {
             info: device_info,
             device,

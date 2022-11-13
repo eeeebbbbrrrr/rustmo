@@ -133,17 +133,6 @@ pub trait VirtualDevice: Sync + Send + 'static {
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
 }
 
-pub trait SyncVirtualDevice: Sync + Send + 'static {
-    /// turn the device on
-    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
-
-    /// turn the device off
-    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
-
-    /// is the device on?
-    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
-}
-
 pub(crate) mod wrappers {
     use std::ops::{Deref, DerefMut};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -434,22 +423,5 @@ impl VirtualDevice for Box<dyn VirtualDevice> {
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.deref().check_is_on()
-    }
-}
-
-impl<T> SyncVirtualDevice for SynchronizedDevice<T>
-where
-    T: VirtualDevice,
-{
-    fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().turn_on()
-    }
-
-    fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().turn_off()
-    }
-
-    fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.lock().check_is_on()
     }
 }
