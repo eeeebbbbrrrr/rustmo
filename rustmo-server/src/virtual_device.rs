@@ -6,6 +6,7 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use parking_lot::{Mutex, MutexGuard};
+use postgres::Error;
 
 use crate::RustmoError;
 
@@ -84,6 +85,12 @@ impl From<ParseIntError> for VirtualDeviceError {
 
 impl From<AddrParseError> for VirtualDeviceError {
     fn from(e: AddrParseError) -> Self {
+        VirtualDeviceError::from(e.to_string())
+    }
+}
+
+impl From<postgres::Error> for VirtualDeviceError {
+    fn from(e: Error) -> Self {
         VirtualDeviceError::from(e.to_string())
     }
 }

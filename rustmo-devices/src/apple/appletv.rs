@@ -46,6 +46,11 @@ impl Device {
         Ok(())
     }
 
+    pub fn open_url(&mut self, url: &str) -> Result<(), VirtualDeviceError> {
+        self.exec(vec![format!("open_url={url}")])?;
+        Ok(())
+    }
+
     pub fn current_app(&mut self) -> Result<Option<(String, String)>, VirtualDeviceError> {
         let map = Self::parse_map(&self.exec(vec!["app"])?, "\n");
         if let Some(app) = map.get("App") {
