@@ -19,6 +19,7 @@ impl AtvRemoteProcess {
             .env("PYTHONUNBUFFERED", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
         let stdout = child.stdout.take().unwrap();
         let reader = BufReader::new(stdout);
