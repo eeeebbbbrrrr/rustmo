@@ -63,8 +63,9 @@ impl AtvRemoteProcess {
 impl Drop for AtvRemoteProcess {
     fn drop(&mut self) {
         tracing::info!("terminating atvremote process");
-        drop(self.stdout.take());
-        drop(self.stdin.take());
+        if let Some(stdin) = self.stdin.as_mut() {
+            stdin.write(b"quit\n").ok();
+        }
         self.child.kill().ok();
     }
 }
