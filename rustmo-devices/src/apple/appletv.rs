@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::io::{BufRead, BufReader, Cursor, Lines, Write};
+use std::io::{BufRead, BufReader, Lines, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
 #[derive(Debug)]
 struct AtvRemoteProcess {
-    stdin: ChildStdin,
-    stdout: Lines<BufReader<ChildStdout>>,
+    stdin: Option<ChildStdin>,
+    stdout: Option<Lines<BufReader<ChildStdout>>>,
     child: Child,
 }
 
@@ -20,8 +20,8 @@ impl AtvRemoteProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
-        let mut stdout = child.stdout.take().unwrap();
-        let mut reader = BufReader::new(stdout);
+        let stdout = child.stdout.take().unwrap();
+        let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
         for line in lines.next() {
             if line? == "awaiting input..." {
@@ -29,17 +29,24 @@ impl AtvRemoteProcess {
             }
         }
         Ok(Self {
-            stdin: child.stdin.take().unwrap(),
-            stdout: lines,
+            stdin: child.stdin.take(),
+            stdout: Some(lines),
             child,
         })
     }
 
     fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
-        self.stdin.write(args.as_ref().as_bytes())?;
+        self.stdin
+            .as_mut()
+            .ok_or(VirtualDeviceError::new("atvremote process died"))?
+            .write(args.as_ref().as_bytes())?;
 
         let mut response = String::new();
-        for line in &mut self.stdout {
+        for line in self
+            .stdout
+            .as_mut()
+            .ok_or(VirtualDeviceError::new("atvremote process died"))?
+        {
             let line = line?;
             if line == "awaiting input..." {
                 break;
@@ -55,6 +62,8 @@ impl AtvRemoteProcess {
 impl Drop for AtvRemoteProcess {
     fn drop(&mut self) {
         tracing::info!("terminating atvremote process");
+        drop(self.stdout.take());
+        drop(self.stdin.take());
         self.child.kill().ok();
     }
 }
