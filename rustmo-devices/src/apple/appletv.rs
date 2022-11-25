@@ -1,15 +1,71 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::process::Command;
+use std::io::{BufRead, BufReader, Cursor, Lines, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
+struct AtvRemoteProcess {
+    stdin: ChildStdin,
+    stdout: Lines<BufReader<ChildStdout>>,
+    child: Child,
+}
+
+impl AtvRemoteProcess {
+    fn new() -> Result<Self, VirtualDeviceError> {
+        let mut child = Command::new("atvremote")
+            .arg("loop")
+            .env("PYTHONUNBUFFERED", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        for line in lines.next() {
+            if line? == "awaiting input..." {
+                break;
+            }
+        }
+        Ok(Self {
+            stdin: child.stdin.take().unwrap(),
+            stdout: lines,
+            child,
+        })
+    }
+
+    fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
+        self.stdin.write(args.as_ref().as_bytes())?;
+
+        let mut response = String::new();
+        for line in &mut self.stdout {
+            let line = line?;
+            if line == "awaiting input..." {
+                break;
+            } else {
+                response.push_str(&line);
+            }
+        }
+
+        Ok(response.trim().to_string())
+    }
+}
+
+impl Drop for AtvRemoteProcess {
+    fn drop(&mut self) {
+        tracing::info!("terminating atvremote process");
+        self.child.kill().ok();
+    }
+}
+
+#[derive(Debug)]
 pub struct Device {
     id: String,
     raop_creds: String,
     airplay_creds: String,
     companion_creds: String,
+    process: AtvRemoteProcess,
 }
 
 impl Device {
@@ -18,25 +74,26 @@ impl Device {
         raop_creds: S,
         airplay_creds: S,
         companion_creds: S,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, VirtualDeviceError> {
+        Ok(Self {
             id: id.into(),
             raop_creds: raop_creds.into(),
             airplay_creds: airplay_creds.into(),
             companion_creds: companion_creds.into(),
-        }
+            process: AtvRemoteProcess::new()?,
+        })
     }
 
-    pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
+    pub fn power_status(&mut self) -> Result<bool, VirtualDeviceError> {
         Ok(self.exec(vec!["power_state"])? == "PowerState.On")
     }
 
-    pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
+    pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
         self.exec(vec!["turn_on"])?;
         Ok(())
     }
 
-    pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
+    pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
         self.exec(vec!["turn_off"])?;
         Ok(())
     }
@@ -179,49 +236,62 @@ impl Device {
         map
     }
 
-    fn exec<S: Into<String> + Debug>(&self, args: Vec<S>) -> Result<String, VirtualDeviceError> {
+    fn exec<S: Into<String> + Debug>(
+        &mut self,
+        args: Vec<S>,
+    ) -> Result<String, VirtualDeviceError> {
         tracing::info!("appletv: {:?}", args);
-        let mut command = Command::new("atvremote");
+        let mut command = Vec::<String>::new();
 
-        command
-            .arg("--id")
-            .arg(&self.id)
-            .arg("--raop-credentials")
-            .arg(&self.raop_creds)
-            .arg("--airplay-credentials")
-            .arg(&self.airplay_creds)
-            .arg("--companion-credentials")
-            .arg(&self.companion_creds)
-            .args(args.into_iter().map(|a| a.into()));
+        command.push("--id".to_string());
+        command.push(self.id.clone());
+        command.push("--raop-credentials".to_string());
+        command.push(self.raop_creds.clone());
+        command.push("--airplay-credentials".to_string());
+        command.push(self.airplay_creds.clone());
+        command.push("--companion-credentials".to_string());
+        command.push(self.companion_creds.clone());
+        command.extend(args.into_iter().map(|a| a.into()));
 
         tracing::debug!("APPLETV COMMAND: {:?}", command);
-        let output = command.output()?;
-        if output.status.success() {
-            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Ok(result)
-        } else {
-            Err(VirtualDeviceError::from(format!(
-                "{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            )))
-        }
+
+        let command_string = command.join(" ") + "\n";
+        self.process.send_command(command_string)
     }
 }
 
 impl VirtualDevice for Device {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.power_on()?;
+        let mut d = Device::new(
+            self.id.clone(),
+            self.raop_creds.clone(),
+            self.airplay_creds.clone(),
+            self.companion_creds.clone(),
+        )?;
+        d.power_on()?;
         Ok(VirtualDeviceState::On)
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        self.power_off()?;
+        let mut d = Device::new(
+            self.id.clone(),
+            self.raop_creds.clone(),
+            self.airplay_creds.clone(),
+            self.companion_creds.clone(),
+        )?;
+        d.power_off()?;
         Ok(VirtualDeviceState::Off)
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        if self.power_status()? {
+        let mut d = Device::new(
+            self.id.clone(),
+            self.raop_creds.clone(),
+            self.airplay_creds.clone(),
+            self.companion_creds.clone(),
+        )?;
+        let status = d.power_status()?;
+        if status {
             Ok(VirtualDeviceState::On)
         } else {
             Ok(VirtualDeviceState::Off)
