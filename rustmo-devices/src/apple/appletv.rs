@@ -66,7 +66,6 @@ impl Drop for AtvRemoteProcess {
         if let Some(stdin) = self.stdin.as_mut() {
             stdin.write(b"quit\n").ok();
         }
-        self.child.kill().ok();
     }
 }
 
