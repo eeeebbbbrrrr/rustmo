@@ -53,6 +53,7 @@ impl AtvRemoteProcess {
                 break;
             } else {
                 response.push_str(&line);
+                response.push('\n');
             }
         }
 
