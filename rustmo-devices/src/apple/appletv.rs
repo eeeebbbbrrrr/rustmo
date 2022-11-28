@@ -5,6 +5,7 @@ use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
+/// wrapper to control the `atvremote` CLI from here:  https://github.com/eeeebbbbrrrr/pyatv/tree/endless-loop
 #[derive(Debug)]
 struct AtvRemoteProcess {
     stdin: Option<ChildStdin>,
