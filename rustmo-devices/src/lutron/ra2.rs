@@ -335,6 +335,7 @@ impl Ra2MainRepeater {
 
     pub fn describe(&self) -> Result<Project, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
+        tracing::warn!("describing system, may take a few minutes...");
         let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
         let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
         project.ra2 = Some(self.clone());
