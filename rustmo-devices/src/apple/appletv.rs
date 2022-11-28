@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Lines, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
@@ -9,7 +9,6 @@ use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDe
 struct AtvRemoteProcess {
     stdin: Option<ChildStdin>,
     stdout: Option<Lines<BufReader<ChildStdout>>>,
-    child: Child,
 }
 
 impl AtvRemoteProcess {
@@ -32,7 +31,6 @@ impl AtvRemoteProcess {
         Ok(Self {
             stdin: child.stdin.take(),
             stdout: Some(lines),
-            child,
         })
     }
 
