@@ -44,6 +44,7 @@ impl AtvRemoteProcess {
         );
         let mut line = String::new();
         stdout.read_line(&mut line)?;
+        let line = line.trim().to_string();
         if line == "awaiting input..." {
             Ok(None)
         } else {
