@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Lines, Write};
-use std::process::{ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
+use tracing::warn;
 
 /// wrapper to control the `atvremote` CLI from here:  https://github.com/eeeebbbbrrrr/pyatv/tree/endless-loop
 #[derive(Debug)]
@@ -14,6 +15,14 @@ struct AtvRemoteProcess {
 
 impl AtvRemoteProcess {
     fn new() -> Result<Self, VirtualDeviceError> {
+        let (mut child, lines) = Self::start_process()?;
+        Ok(Self {
+            stdin: child.stdin.take(),
+            stdout: Some(lines),
+        })
+    }
+
+    fn start_process() -> Result<(Child, Lines<BufReader<ChildStdout>>), VirtualDeviceError> {
         let mut child = Command::new("atvremote")
             .arg("loop")
             .env("PYTHONUNBUFFERED", "1")
@@ -29,34 +38,54 @@ impl AtvRemoteProcess {
                 break;
             }
         }
-        Ok(Self {
-            stdin: child.stdin.take(),
-            stdout: Some(lines),
-        })
+        Ok((child, lines))
     }
 
     fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
-        self.stdin
-            .as_mut()
-            .ok_or(VirtualDeviceError::new("atvremote process died"))?
-            .write(args.as_ref().as_bytes())?;
-
-        let mut response = String::new();
-        for line in self
-            .stdout
-            .as_mut()
-            .ok_or(VirtualDeviceError::new("atvremote process died"))?
-        {
-            let line = line?;
-            if line == "awaiting input..." {
-                break;
-            } else {
-                response.push_str(&line);
-                response.push('\n');
+        let mut retries = 0;
+        loop {
+            if retries > 10 {
+                return Err(VirtualDeviceError::new(
+                    "tried to restart atvremote too many times",
+                ));
             }
-        }
+            let result: Result<String, VirtualDeviceError> = {
+                self.stdin
+                    .as_mut()
+                    .ok_or(VirtualDeviceError::new("atvremote process died"))?
+                    .write(args.as_ref().as_bytes())?;
 
-        Ok(response.trim().to_string())
+                let mut response = String::new();
+                for line in self
+                    .stdout
+                    .as_mut()
+                    .ok_or(VirtualDeviceError::new("atvremote process died"))?
+                {
+                    let line = line?;
+                    if line == "awaiting input..." {
+                        break;
+                    } else {
+                        response.push_str(&line);
+                        response.push('\n');
+                    }
+                }
+                Ok(response)
+            };
+
+            let response = match result {
+                Ok(response) => response,
+                Err(e) => {
+                    let (mut child, lines) = AtvRemoteProcess::start_process()?;
+                    self.stdin = child.stdin.take();
+                    self.stdout = Some(lines);
+                    retries += 1;
+                    warn!("restarting atvremote process: {e}");
+                    continue;
+                }
+            };
+
+            return Ok(response.trim().to_string());
+        }
     }
 }
 
