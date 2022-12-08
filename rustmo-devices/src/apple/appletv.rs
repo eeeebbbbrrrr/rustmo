@@ -53,6 +53,11 @@ impl AtvRemoteProcess {
     }
 
     fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
+        if let Some(_) = self.child.try_wait()? {
+            // atvremote process died.  need to make a new one
+            warn!("detected atvremote process died.  Restarting");
+            self.child = Self::start_process()?;
+        }
         let mut retries = 0;
         loop {
             if retries > 10 {
