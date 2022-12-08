@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::io::{BufRead, BufReader, Lines, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 use tracing::warn;
@@ -9,20 +9,17 @@ use tracing::warn;
 /// wrapper to control the `atvremote` CLI from here:  https://github.com/eeeebbbbrrrr/pyatv/tree/endless-loop
 #[derive(Debug)]
 struct AtvRemoteProcess {
-    stdin: Option<ChildStdin>,
-    stdout: Option<Lines<BufReader<ChildStdout>>>,
+    child: Child,
 }
 
 impl AtvRemoteProcess {
     fn new() -> Result<Self, VirtualDeviceError> {
-        let (mut child, lines) = Self::start_process()?;
         Ok(Self {
-            stdin: child.stdin.take(),
-            stdout: Some(lines),
+            child: Self::start_process()?,
         })
     }
 
-    fn start_process() -> Result<(Child, Lines<BufReader<ChildStdout>>), VirtualDeviceError> {
+    fn start_process() -> Result<Child, VirtualDeviceError> {
         let mut child = Command::new("atvremote")
             .arg("loop")
             .env("PYTHONUNBUFFERED", "1")
@@ -30,15 +27,28 @@ impl AtvRemoteProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let stdout = child.stdout.take().unwrap();
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
-        for line in lines.next() {
-            if line? == "awaiting input..." {
-                break;
-            }
+
+        match Self::read_line(&mut child) {
+            Ok(None) => Ok(child),
+            Ok(Some(unexpected)) => Err(VirtualDeviceError::from(unexpected)),
+            Err(e) => Err(e),
         }
-        Ok((child, lines))
+    }
+
+    fn read_line(child: &mut Child) -> Result<Option<String>, VirtualDeviceError> {
+        let mut stdout = BufReader::new(
+            child
+                .stdout
+                .as_mut()
+                .ok_or(VirtualDeviceError::new("atvremote process didn't start"))?,
+        );
+        let mut line = String::new();
+        stdout.read_line(&mut line)?;
+        if line == "awaiting input..." {
+            Ok(None)
+        } else {
+            Ok(Some(line))
+        }
     }
 
     fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
@@ -50,36 +60,25 @@ impl AtvRemoteProcess {
                 ));
             }
             let result: Result<String, VirtualDeviceError> = {
-                self.stdin
+                self.child
+                    .stdin
                     .as_mut()
                     .ok_or(VirtualDeviceError::new("atvremote process died"))?
                     .write(args.as_ref().as_bytes())?;
 
-                let mut response = String::new();
-                for line in self
-                    .stdout
-                    .as_mut()
-                    .ok_or(VirtualDeviceError::new("atvremote process died"))?
-                {
-                    let line = line?;
-                    if line == "awaiting input..." {
-                        break;
-                    } else {
-                        response.push_str(&line);
-                        response.push('\n');
-                    }
+                let mut lines = Vec::new();
+                while let Some(line) = Self::read_line(&mut self.child)? {
+                    lines.push(line);
                 }
-                Ok(response)
+                Ok(lines.join("\n"))
             };
 
             let response = match result {
                 Ok(response) => response,
                 Err(e) => {
-                    let (mut child, lines) = AtvRemoteProcess::start_process()?;
-                    self.stdin = child.stdin.take();
-                    self.stdout = Some(lines);
-                    retries += 1;
                     warn!("restarting atvremote process: {e}");
+                    self.child = Self::start_process()?;
+                    retries += 1;
                     continue;
                 }
             };
@@ -92,7 +91,7 @@ impl AtvRemoteProcess {
 impl Drop for AtvRemoteProcess {
     fn drop(&mut self) {
         tracing::info!("terminating atvremote process");
-        if let Some(stdin) = self.stdin.as_mut() {
+        if let Some(mut stdin) = self.child.stdin.take() {
             stdin.write(b"quit\n").ok();
         }
     }
