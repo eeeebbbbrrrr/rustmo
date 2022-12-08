@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 use tracing::warn;
@@ -10,16 +10,11 @@ use tracing::warn;
 #[derive(Debug)]
 struct AtvRemoteProcess {
     child: Child,
+    stdout: BufReader<ChildStdout>,
 }
 
 impl AtvRemoteProcess {
     fn new() -> Result<Self, VirtualDeviceError> {
-        Ok(Self {
-            child: Self::start_process()?,
-        })
-    }
-
-    fn start_process() -> Result<Child, VirtualDeviceError> {
         let mut child = Command::new("atvremote")
             .arg("loop")
             .env("PYTHONUNBUFFERED", "1")
@@ -27,36 +22,35 @@ impl AtvRemoteProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-
-        match Self::read_line(&mut child) {
-            Ok(None) => Ok(child),
-            Ok(Some(unexpected)) => Err(VirtualDeviceError::from(unexpected)),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn read_line(child: &mut Child) -> Result<Option<String>, VirtualDeviceError> {
-        let mut stdout = BufReader::new(
+        let stdout = BufReader::new(
             child
                 .stdout
-                .as_mut()
+                .take()
                 .ok_or(VirtualDeviceError::new("atvremote process didn't start"))?,
         );
-        let mut line = String::new();
-        stdout.read_line(&mut line)?;
-        let line = line.trim().to_string();
-        if line == "awaiting input..." {
-            Ok(None)
-        } else {
-            Ok(Some(line))
+        let mut arp = Self { child, stdout };
+
+        arp.read_until_ready()?;
+        Ok(arp)
+    }
+
+    fn read_until_ready(&mut self) -> Result<Vec<String>, VirtualDeviceError> {
+        let mut lines = Vec::new();
+        for line in (&mut self.stdout).lines() {
+            let line = line?;
+            if line == "awaiting input..." {
+                break;
+            }
+            lines.push(line);
         }
+        Ok(lines)
     }
 
     fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
         if let Some(_) = self.child.try_wait()? {
             // atvremote process died.  need to make a new one
             warn!("detected atvremote process died.  Restarting");
-            self.child = Self::start_process()?;
+            *self = Self::new()?;
         }
         let mut retries = 0;
         loop {
@@ -71,19 +65,14 @@ impl AtvRemoteProcess {
                     .as_mut()
                     .ok_or(VirtualDeviceError::new("atvremote process died"))?
                     .write(args.as_ref().as_bytes())?;
-
-                let mut lines = Vec::new();
-                while let Some(line) = Self::read_line(&mut self.child)? {
-                    lines.push(line);
-                }
-                Ok(lines.join("\n"))
+                Ok(self.read_until_ready()?.join("\n"))
             };
 
             let response = match result {
                 Ok(response) => response,
                 Err(e) => {
                     warn!("restarting atvremote process: {e}");
-                    self.child = Self::start_process()?;
+                    *self = Self::new()?;
                     retries += 1;
                     continue;
                 }
