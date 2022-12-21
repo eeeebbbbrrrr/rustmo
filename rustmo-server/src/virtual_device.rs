@@ -147,7 +147,7 @@ pub(crate) mod wrappers {
     use std::time::Duration;
 
     use crate::virtual_device::{
-        SynchronizedDevice, VirtualDevice, VirtualDeviceError, VirtualDeviceState,
+        VirtualDevice, VirtualDeviceError, VirtualDeviceState,
     };
 
     ///
@@ -285,7 +285,7 @@ pub(crate) mod wrappers {
     /// All state changes and inqueries to the underlying devices happen in parallel
     ///
     pub struct CompositeDevice {
-        pub(crate) devices: Vec<SynchronizedDevice<Box<dyn VirtualDevice>>>,
+        pub(crate) devices: Vec<Box<dyn VirtualDevice>>,
     }
 
     impl VirtualDevice for CompositeDevice {

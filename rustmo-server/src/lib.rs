@@ -261,7 +261,7 @@ impl RustmoServer {
     pub fn add_device_group(
         &mut self,
         name: &str,
-        devices: Vec<SynchronizedDevice<Box<dyn VirtualDevice>>>,
+        devices: Vec<Box<dyn VirtualDevice>>,
     ) -> Result<SynchronizedDevice<CompositeDevice>, RustmoError> {
         let virtual_device = CompositeDevice { devices };
         self.internal_add_device(name, self.ip_address, virtual_device)
