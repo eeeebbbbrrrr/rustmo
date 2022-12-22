@@ -105,6 +105,7 @@ impl RustmoDevice {
 /// `RustmoServer` also creates a multicast UDP socket listener to implement the SSDP-based device
 /// discovery protocol required by Alexa -- this listens on port 1900.
 ///
+#[derive(Clone)]
 pub struct RustmoServer {
     devices: VirtualDevicesList,
     next_port: u16,

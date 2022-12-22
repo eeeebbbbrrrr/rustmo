@@ -6,6 +6,7 @@ use net2::unix::UnixUdpBuilderExt;
 
 use crate::{RustmoDeviceInfo, VirtualDevicesList};
 
+#[derive(Clone)]
 pub(crate) struct SsdpListener;
 
 ///
