@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::thread;
 
 use parking_lot::RwLock;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::ssdp::SsdpListener;
@@ -291,6 +292,8 @@ impl RustmoServer {
         self.next_port += 1;
 
         device_list.push(device);
+
+        warn!("registered Rustmo Device `{}` of type `{}`", name, std::any::type_name::<T>());
         Ok(synced)
     }
 }
