@@ -275,6 +275,7 @@ impl RustmoServer {
         virtual_device: T,
     ) -> Result<SynchronizedDevice<T>, RustmoError> {
         let name = name.into();
+        warn!("registered Rustmo Device `{}` of type `{}`", name, std::any::type_name::<T>());
         let mut device_list = self.devices.write();
         for existing_device in device_list.iter() {
             if existing_device
@@ -293,7 +294,6 @@ impl RustmoServer {
 
         device_list.push(device);
 
-        warn!("registered Rustmo Device `{}` of type `{}`", name, std::any::type_name::<T>());
         Ok(synced)
     }
 }
