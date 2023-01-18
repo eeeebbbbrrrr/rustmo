@@ -290,7 +290,9 @@ impl Device {
         tracing::debug!("APPLETV COMMAND: {:?}", command);
 
         let command_string = command.join(" ") + "\n";
-        self.process.send_command(command_string)
+        let result = self.process.send_command(command_string);
+        tracing::debug!("APPLETV RESPONSE: {:?}", result);
+        result
     }
 }
 
