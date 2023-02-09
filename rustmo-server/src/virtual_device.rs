@@ -97,7 +97,7 @@ impl From<postgres::Error> for VirtualDeviceError {
 
 impl std::error::Error for VirtualDeviceError {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum VirtualDeviceState {
     /// the device is on
     On,
@@ -146,9 +146,7 @@ pub(crate) mod wrappers {
     use std::thread;
     use std::time::Duration;
 
-    use crate::virtual_device::{
-        VirtualDevice, VirtualDeviceError, VirtualDeviceState,
-    };
+    use crate::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
     ///
     /// Wrapper for `VirtualDevice` that pretends the device is instantly turned on when
