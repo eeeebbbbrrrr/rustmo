@@ -86,6 +86,7 @@ impl DeviceHttpServerHandler {
 
         let mut content = String::new();
         request.read_to_string(&mut content).unwrap();
+        content = content.replace("\"s:", "\" s:");
 
         let envelope: UpnpEnvelope =
             from_reader(content.as_bytes()).unwrap_or_else(|e| panic!("{}:\n{}", e, content));
