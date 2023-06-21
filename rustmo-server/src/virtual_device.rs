@@ -10,7 +10,7 @@ use postgres::Error;
 
 use crate::RustmoError;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct VirtualDeviceError(pub String);
 
 impl VirtualDeviceError {

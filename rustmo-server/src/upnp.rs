@@ -87,7 +87,8 @@ impl DeviceHttpServerHandler {
         let mut content = String::new();
         request.read_to_string(&mut content).unwrap();
 
-        let envelope: UpnpEnvelope = from_reader(content.as_bytes()).unwrap();
+        let envelope: UpnpEnvelope =
+            from_reader(content.as_bytes()).unwrap_or_else(|e| panic!("{}:\n{}", e, content));
         let get_or_set;
         let on_off = match action {
             "GetBinaryState" => {
