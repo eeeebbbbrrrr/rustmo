@@ -311,20 +311,11 @@ pub(crate) mod wrappers {
         }
 
         fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-            let on = AtomicBool::new(true);
-            self.devices.iter().for_each(|device| {
-                match device.check_is_on().unwrap_or(VirtualDeviceState::Off) {
-                    VirtualDeviceState::On => {
-                        on.compare_exchange(true, true, Ordering::SeqCst, Ordering::SeqCst)
-                            .ok();
-                    }
-                    VirtualDeviceState::Off => {
-                        on.store(false, Ordering::SeqCst);
-                    }
-                }
-            });
-
-            if on.load(Ordering::SeqCst) {
+            if self
+                .devices
+                .iter()
+                .any(|d| d.check_is_on() == Ok(VirtualDeviceState::On))
+            {
                 Ok(VirtualDeviceState::On)
             } else {
                 Ok(VirtualDeviceState::Off)
