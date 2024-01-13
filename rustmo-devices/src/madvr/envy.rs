@@ -8,11 +8,21 @@ use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDe
 #[derive(Clone, Debug)]
 pub struct Device {
     ip: IpAddr,
+    mac: [u8; 6],
 }
 
 impl Device {
-    pub fn new(ip: IpAddr) -> Self {
-        Self { ip }
+    pub fn new(ip: IpAddr, mac: [u8; 6]) -> Self {
+        Self { ip, mac }
+    }
+
+    pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
+        let packet = wake_on_lan::MagicPacket::new(&self.mac);
+        Ok(packet.send()?)
+    }
+
+    pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
+        self.send_command("Power Off", false).map(|_| ())
     }
 
     pub fn standby(&mut self) -> Result<(), VirtualDeviceError> {
@@ -138,13 +148,11 @@ impl Device {
 
 impl VirtualDevice for Device {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        todo!("How to turn madvr on?")
-        // Ok(VirtualDeviceState::On)
+        self.power_on().map(|_| VirtualDeviceState::On)
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        todo!("How to turn madvr off?")
-        // Ok(VirtualDeviceState::Off)
+        self.power_off().map(|_| VirtualDeviceState::Off)
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {

@@ -1141,6 +1141,7 @@ dependencies = [
  "telnet",
  "tracing",
  "ureq",
+ "wake-on-lan",
 ]
 
 [[package]]
@@ -1689,6 +1690,12 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "wake-on-lan"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ccf60b60ad7e5b1b37372c5134cbcab4db0706c231d212e0c643a077462bc8f"
 
 [[package]]
 name = "wasi"
