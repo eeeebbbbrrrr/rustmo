@@ -22,7 +22,7 @@ impl Device {
     }
 
     pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
-        self.send_command("Power Off", false).map(|_| ())
+        self.send_command("PowerOff", false).map(|_| ())
     }
 
     pub fn standby(&mut self) -> Result<(), VirtualDeviceError> {
