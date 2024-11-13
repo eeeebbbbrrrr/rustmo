@@ -550,7 +550,7 @@ fn send_command(telnet: &mut MyTelnet, command: &str) -> Result<Vec<String>, Vir
     let mut responses = Vec::new();
     while let Event::Data(response) = telnet.read_timeout(Duration::from_millis(1000))? {
         let response = String::from_utf8_lossy(&response);
-        if response.contains("GNET> ") {
+        if response.contains("GNET> ") || response.trim().is_empty() {
             return Ok(responses);
         } else if response.contains("~ERROR") {
             return Err(VirtualDeviceError::from(response));
