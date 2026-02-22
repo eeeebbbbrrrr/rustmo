@@ -133,8 +133,33 @@ impl Device {
     }
 
     pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
+        // Send Wake-on-LAN first to wake the AppleTV from deep sleep.
+        // When powered off, the AppleTV doesn't respond to mDNS, so pyatv
+        // can't discover it. WoL wakes the network interface so pyatv can
+        // find and connect to it.
+        if let Some(mac) = Self::parse_mac(&self.id) {
+            tracing::info!("sending WoL packet to AppleTV ({})", self.id);
+            let packet = wake_on_lan::MagicPacket::new(&mac);
+            if let Err(e) = packet.send() {
+                tracing::warn!("failed to send WoL to AppleTV: {}", e);
+            }
+            // give the AppleTV time to wake and rejoin the network
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
         self.exec(vec!["turn_on"])?;
         Ok(())
+    }
+
+    fn parse_mac(mac_str: &str) -> Option<[u8; 6]> {
+        let parts: Vec<&str> = mac_str.split(':').collect();
+        if parts.len() != 6 {
+            return None;
+        }
+        let mut mac = [0u8; 6];
+        for (i, part) in parts.iter().enumerate() {
+            mac[i] = u8::from_str_radix(part, 16).ok()?;
+        }
+        Some(mac)
     }
 
     pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
