@@ -89,6 +89,16 @@ impl Drop for AtvRemoteProcess {
         if let Some(mut stdin) = self.child.stdin.take() {
             stdin.write(b"quit\n").ok();
         }
+        // capture any stderr output before killing
+        if let Some(mut stderr) = self.child.stderr.take() {
+            let mut err_output = String::new();
+            use std::io::Read;
+            // non-blocking read of whatever's available
+            stderr.read_to_string(&mut err_output).ok();
+            if !err_output.trim().is_empty() {
+                tracing::warn!("atvremote stderr: {}", err_output.trim());
+            }
+        }
         self.child.kill().ok();
     }
 }
@@ -287,17 +297,21 @@ impl Device {
         command.push(self.companion_creds.clone());
         command.extend(args.into_iter().map(|a| a.into()));
 
-        tracing::debug!("APPLETV COMMAND: {:?}", command);
+        tracing::info!("APPLETV COMMAND: {:?}", command);
 
         let command_string = command.join(" ") + "\n";
         let result = self.process.send_command(command_string);
-        tracing::debug!("APPLETV RESPONSE: {:?}", result);
+        tracing::info!("APPLETV RESPONSE: {:?}", result);
         result
     }
 }
 
 impl VirtualDevice for Device {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        tracing::warn!(
+            "AppleTV VirtualDevice::turn_on called -- this spawns a throwaway \
+             atvremote process. Prefer using appletv.lock().power_on() instead."
+        );
         let mut d = Device::new(
             self.id.clone(),
             self.raop_creds.clone(),
@@ -309,6 +323,10 @@ impl VirtualDevice for Device {
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        tracing::warn!(
+            "AppleTV VirtualDevice::turn_off called -- this spawns a throwaway \
+             atvremote process. Prefer using appletv.lock().power_off() instead."
+        );
         let mut d = Device::new(
             self.id.clone(),
             self.raop_creds.clone(),
@@ -320,6 +338,10 @@ impl VirtualDevice for Device {
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        tracing::warn!(
+            "AppleTV VirtualDevice::check_is_on called -- this spawns a throwaway \
+             atvremote process. Prefer using appletv.lock().power_status() instead."
+        );
         let mut d = Device::new(
             self.id.clone(),
             self.raop_creds.clone(),
