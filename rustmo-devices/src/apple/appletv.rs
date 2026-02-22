@@ -1,116 +1,15 @@
 use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdout, Command, Stdio};
+use std::process::Command;
 
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
-use tracing::warn;
 
-/// wrapper to control the `atvremote` CLI from here:  https://github.com/eeeebbbbrrrr/pyatv/tree/endless-loop
-#[derive(Debug)]
-struct AtvRemoteProcess {
-    child: Child,
-    stdout: BufReader<ChildStdout>,
-}
-
-impl AtvRemoteProcess {
-    fn new() -> Result<Self, VirtualDeviceError> {
-        let mut child = Command::new("atvremote")
-            .arg("loop")
-            .env("PYTHONUNBUFFERED", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let stdout = BufReader::new(
-            child
-                .stdout
-                .take()
-                .ok_or(VirtualDeviceError::new("atvremote process didn't start"))?,
-        );
-        let mut arp = Self { child, stdout };
-
-        arp.read_until_ready()?;
-        Ok(arp)
-    }
-
-    fn read_until_ready(&mut self) -> Result<Vec<String>, VirtualDeviceError> {
-        let mut lines = Vec::new();
-        for line in (&mut self.stdout).lines() {
-            let line = line?;
-            if line == "awaiting input..." {
-                break;
-            }
-            lines.push(line);
-        }
-        Ok(lines)
-    }
-
-    fn send_command<S: AsRef<str>>(&mut self, args: S) -> Result<String, VirtualDeviceError> {
-        if let Some(_) = self.child.try_wait()? {
-            // atvremote process died.  need to make a new one
-            warn!("detected atvremote process died.  Restarting");
-            *self = Self::new()?;
-        }
-        let mut retries = 0;
-        loop {
-            if retries > 10 {
-                return Err(VirtualDeviceError::new(
-                    "tried to restart atvremote too many times",
-                ));
-            }
-            let result: Result<String, VirtualDeviceError> = {
-                self.child
-                    .stdin
-                    .as_mut()
-                    .ok_or(VirtualDeviceError::new("atvremote process died"))?
-                    .write(args.as_ref().as_bytes())?;
-                Ok(self.read_until_ready()?.join("\n"))
-            };
-
-            let response = match result {
-                Ok(response) => response,
-                Err(e) => {
-                    warn!("restarting atvremote process: {e}");
-                    *self = Self::new()?;
-                    retries += 1;
-                    continue;
-                }
-            };
-
-            return Ok(response.trim().to_string());
-        }
-    }
-}
-
-impl Drop for AtvRemoteProcess {
-    fn drop(&mut self) {
-        tracing::info!("terminating atvremote process");
-        if let Some(mut stdin) = self.child.stdin.take() {
-            stdin.write(b"quit\n").ok();
-        }
-        // capture any stderr output before killing
-        if let Some(mut stderr) = self.child.stderr.take() {
-            let mut err_output = String::new();
-            use std::io::Read;
-            // non-blocking read of whatever's available
-            stderr.read_to_string(&mut err_output).ok();
-            if !err_output.trim().is_empty() {
-                tracing::warn!("atvremote stderr: {}", err_output.trim());
-            }
-        }
-        self.child.kill().ok();
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Device {
     id: String,
     ip: std::net::IpAddr,
     raop_creds: String,
     airplay_creds: String,
     companion_creds: String,
-    process: AtvRemoteProcess,
 }
 
 impl Device {
@@ -120,43 +19,42 @@ impl Device {
         raop_creds: S,
         airplay_creds: S,
         companion_creds: S,
-    ) -> Result<Self, VirtualDeviceError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             id: id.into(),
             ip,
             raop_creds: raop_creds.into(),
             airplay_creds: airplay_creds.into(),
             companion_creds: companion_creds.into(),
-            process: AtvRemoteProcess::new()?,
-        })
+        }
     }
 
-    pub fn power_status(&mut self) -> Result<bool, VirtualDeviceError> {
-        Ok(self.exec(vec!["power_state"])? == "PowerState.On")
+    pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
+        Ok(self.exec("power_state")? == "PowerState.On")
     }
 
-    pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["turn_on"])?;
+    pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("turn_on")?;
         Ok(())
     }
 
-    pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["turn_off"])?;
+    pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("turn_off")?;
         Ok(())
     }
 
-    pub fn launch_app(&mut self, bundle_id: &str) -> Result<(), VirtualDeviceError> {
-        self.exec(vec![format!("launch_app={bundle_id}")])?;
+    pub fn launch_app(&self, bundle_id: &str) -> Result<(), VirtualDeviceError> {
+        self.exec(&format!("launch_app={bundle_id}"))?;
         Ok(())
     }
 
-    pub fn open_url(&mut self, url: &str) -> Result<(), VirtualDeviceError> {
-        self.exec(vec![format!("open_url={url}")])?;
+    pub fn open_url(&self, url: &str) -> Result<(), VirtualDeviceError> {
+        self.exec(&format!("open_url={url}"))?;
         Ok(())
     }
 
-    pub fn current_app(&mut self) -> Result<Option<(String, String)>, VirtualDeviceError> {
-        let map = Self::parse_map(&self.exec(vec!["app"])?, "\n");
+    pub fn current_app(&self) -> Result<Option<(String, String)>, VirtualDeviceError> {
+        let map = Self::parse_map(&self.exec("app")?, "\n");
         if let Some(app) = map.get("App") {
             Ok(Self::parse_app_tuple(app))
         } else {
@@ -164,11 +62,9 @@ impl Device {
         }
     }
 
-    pub fn app_list(
-        &mut self,
-    ) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
+    pub fn app_list(&self) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
         let mut apps = Vec::new();
-        for line in self.exec(vec!["app_list"])?.split(", ") {
+        for line in self.exec("app_list")?.split(", ") {
             let map = Self::parse_map(line, "\n");
             if let Some(app) = map.get("App") {
                 if let Some(a) = Self::parse_app_tuple(app) {
@@ -179,84 +75,84 @@ impl Device {
         Ok(apps.into_iter())
     }
 
-    pub fn up(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["up"]).map(|_| ())
+    pub fn up(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("up").map(|_| ())
     }
 
-    pub fn down(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["down"]).map(|_| ())
+    pub fn down(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("down").map(|_| ())
     }
 
-    pub fn left(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["left"]).map(|_| ())
+    pub fn left(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("left").map(|_| ())
     }
 
-    pub fn right(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["right"]).map(|_| ())
+    pub fn right(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("right").map(|_| ())
     }
 
-    pub fn channel_down(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["channel_down"]).map(|_| ())
+    pub fn channel_down(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("channel_down").map(|_| ())
     }
 
-    pub fn channel_up(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["channel_up"]).map(|_| ())
+    pub fn channel_up(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("channel_up").map(|_| ())
     }
 
-    pub fn home(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["home"]).map(|_| ())
+    pub fn home(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("home").map(|_| ())
     }
 
-    pub fn home_hold(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["home_hold"]).map(|_| ())
+    pub fn home_hold(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("home_hold").map(|_| ())
     }
 
-    pub fn menu(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["menu"]).map(|_| ())
+    pub fn menu(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("menu").map(|_| ())
     }
 
-    pub fn top_menu(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["top_menu"]).map(|_| ())
+    pub fn top_menu(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("top_menu").map(|_| ())
     }
 
-    pub fn next(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["next"]).map(|_| ())
+    pub fn next(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("next").map(|_| ())
     }
 
-    pub fn previous(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["previous"]).map(|_| ())
+    pub fn previous(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("previous").map(|_| ())
     }
 
-    pub fn play(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["play"]).map(|_| ())
+    pub fn play(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("play").map(|_| ())
     }
 
-    pub fn pause(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["pause"]).map(|_| ())
+    pub fn pause(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("pause").map(|_| ())
     }
 
-    pub fn stop(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["stop"]).map(|_| ())
+    pub fn stop(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("stop").map(|_| ())
     }
 
-    pub fn select(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["select"]).map(|_| ())
+    pub fn select(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("select").map(|_| ())
     }
 
-    pub fn skip_backward(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["skip_backward"]).map(|_| ())
+    pub fn skip_backward(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("skip_backward").map(|_| ())
     }
 
-    pub fn skip_forward(&mut self) -> Result<(), VirtualDeviceError> {
-        self.exec(vec!["skip_forward"]).map(|_| ())
+    pub fn skip_forward(&self) -> Result<(), VirtualDeviceError> {
+        self.exec("skip_forward").map(|_| ())
     }
 
-    pub fn playing(&mut self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
-        Ok(Self::parse_map(&self.exec(vec!["playing"])?, "\n"))
+    pub fn playing(&self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
+        Ok(Self::parse_map(&self.exec("playing")?, "\n"))
     }
 
-    pub fn paused(&mut self) -> Result<bool, VirtualDeviceError> {
-        Ok(self.exec(vec!["device_state"])? == "DeviceState.Paused")
+    pub fn paused(&self) -> Result<bool, VirtualDeviceError> {
+        Ok(self.exec("device_state")? == "DeviceState.Paused")
     }
 
     fn parse_app_tuple(app: &String) -> Option<(String, String)> {
@@ -283,81 +179,59 @@ impl Device {
         map
     }
 
-    fn exec<S: Into<String> + Debug>(
-        &mut self,
-        args: Vec<S>,
-    ) -> Result<String, VirtualDeviceError> {
-        tracing::info!("appletv: {:?}", args);
-        let mut command = Vec::<String>::new();
+    fn exec(&self, atvremote_command: &str) -> Result<String, VirtualDeviceError> {
+        tracing::info!("appletv: {}", atvremote_command);
 
-        command.push("--id".to_string());
-        command.push(self.id.clone());
-        command.push("--scan-hosts".to_string());
-        command.push(self.ip.to_string());
-        command.push("--raop-credentials".to_string());
-        command.push(self.raop_creds.clone());
-        command.push("--airplay-credentials".to_string());
-        command.push(self.airplay_creds.clone());
-        command.push("--companion-credentials".to_string());
-        command.push(self.companion_creds.clone());
-        command.extend(args.into_iter().map(|a| a.into()));
+        let output = Command::new("atvremote")
+            .arg("--id")
+            .arg(&self.id)
+            .arg("--scan-hosts")
+            .arg(self.ip.to_string())
+            .arg("--raop-credentials")
+            .arg(&self.raop_creds)
+            .arg("--airplay-credentials")
+            .arg(&self.airplay_creds)
+            .arg("--companion-credentials")
+            .arg(&self.companion_creds)
+            .arg(atvremote_command)
+            .output()
+            .map_err(|e| VirtualDeviceError::from(format!("failed to run atvremote: {e}")))?;
 
-        tracing::info!("APPLETV COMMAND: {:?}", command);
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
-        let command_string = command.join(" ") + "\n";
-        let result = self.process.send_command(command_string);
-        tracing::info!("APPLETV RESPONSE: {:?}", result);
-        result
+        if !stderr.is_empty() {
+            tracing::warn!("atvremote stderr: {stderr}");
+        }
+
+        tracing::info!("atvremote response: {stdout}");
+
+        if !output.status.success() {
+            return Err(VirtualDeviceError::from(format!(
+                "atvremote '{}' failed (exit {}): {}",
+                atvremote_command,
+                output.status.code().unwrap_or(-1),
+                if stdout.is_empty() { &stderr } else { &stdout }
+            )));
+        }
+
+        Ok(stdout)
     }
 }
 
 impl VirtualDevice for Device {
     fn turn_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        tracing::warn!(
-            "AppleTV VirtualDevice::turn_on called -- this spawns a throwaway \
-             atvremote process. Prefer using appletv.lock().power_on() instead."
-        );
-        let mut d = Device::new(
-            self.id.clone(),
-            self.ip,
-            self.raop_creds.clone(),
-            self.airplay_creds.clone(),
-            self.companion_creds.clone(),
-        )?;
-        d.power_on()?;
+        self.power_on()?;
         Ok(VirtualDeviceState::On)
     }
 
     fn turn_off(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        tracing::warn!(
-            "AppleTV VirtualDevice::turn_off called -- this spawns a throwaway \
-             atvremote process. Prefer using appletv.lock().power_off() instead."
-        );
-        let mut d = Device::new(
-            self.id.clone(),
-            self.ip,
-            self.raop_creds.clone(),
-            self.airplay_creds.clone(),
-            self.companion_creds.clone(),
-        )?;
-        d.power_off()?;
+        self.power_off()?;
         Ok(VirtualDeviceState::Off)
     }
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        tracing::warn!(
-            "AppleTV VirtualDevice::check_is_on called -- this spawns a throwaway \
-             atvremote process. Prefer using appletv.lock().power_status() instead."
-        );
-        let mut d = Device::new(
-            self.id.clone(),
-            self.ip,
-            self.raop_creds.clone(),
-            self.airplay_creds.clone(),
-            self.companion_creds.clone(),
-        )?;
-        let status = d.power_status()?;
-        if status {
+        if self.power_status()? {
             Ok(VirtualDeviceState::On)
         } else {
             Ok(VirtualDeviceState::Off)
