@@ -106,6 +106,7 @@ impl Drop for AtvRemoteProcess {
 #[derive(Debug)]
 pub struct Device {
     id: String,
+    ip: std::net::IpAddr,
     raop_creds: String,
     airplay_creds: String,
     companion_creds: String,
@@ -115,12 +116,14 @@ pub struct Device {
 impl Device {
     pub fn new<S: Into<String>>(
         id: S,
+        ip: std::net::IpAddr,
         raop_creds: S,
         airplay_creds: S,
         companion_creds: S,
     ) -> Result<Self, VirtualDeviceError> {
         Ok(Self {
             id: id.into(),
+            ip,
             raop_creds: raop_creds.into(),
             airplay_creds: airplay_creds.into(),
             companion_creds: companion_creds.into(),
@@ -133,33 +136,8 @@ impl Device {
     }
 
     pub fn power_on(&mut self) -> Result<(), VirtualDeviceError> {
-        // Send Wake-on-LAN first to wake the AppleTV from deep sleep.
-        // When powered off, the AppleTV doesn't respond to mDNS, so pyatv
-        // can't discover it. WoL wakes the network interface so pyatv can
-        // find and connect to it.
-        if let Some(mac) = Self::parse_mac(&self.id) {
-            tracing::info!("sending WoL packet to AppleTV ({})", self.id);
-            let packet = wake_on_lan::MagicPacket::new(&mac);
-            if let Err(e) = packet.send() {
-                tracing::warn!("failed to send WoL to AppleTV: {}", e);
-            }
-            // give the AppleTV time to wake and rejoin the network
-            std::thread::sleep(std::time::Duration::from_secs(5));
-        }
         self.exec(vec!["turn_on"])?;
         Ok(())
-    }
-
-    fn parse_mac(mac_str: &str) -> Option<[u8; 6]> {
-        let parts: Vec<&str> = mac_str.split(':').collect();
-        if parts.len() != 6 {
-            return None;
-        }
-        let mut mac = [0u8; 6];
-        for (i, part) in parts.iter().enumerate() {
-            mac[i] = u8::from_str_radix(part, 16).ok()?;
-        }
-        Some(mac)
     }
 
     pub fn power_off(&mut self) -> Result<(), VirtualDeviceError> {
@@ -314,6 +292,8 @@ impl Device {
 
         command.push("--id".to_string());
         command.push(self.id.clone());
+        command.push("--scan-hosts".to_string());
+        command.push(self.ip.to_string());
         command.push("--raop-credentials".to_string());
         command.push(self.raop_creds.clone());
         command.push("--airplay-credentials".to_string());
@@ -339,6 +319,7 @@ impl VirtualDevice for Device {
         );
         let mut d = Device::new(
             self.id.clone(),
+            self.ip,
             self.raop_creds.clone(),
             self.airplay_creds.clone(),
             self.companion_creds.clone(),
@@ -354,6 +335,7 @@ impl VirtualDevice for Device {
         );
         let mut d = Device::new(
             self.id.clone(),
+            self.ip,
             self.raop_creds.clone(),
             self.airplay_creds.clone(),
             self.companion_creds.clone(),
@@ -369,6 +351,7 @@ impl VirtualDevice for Device {
         );
         let mut d = Device::new(
             self.id.clone(),
+            self.ip,
             self.raop_creds.clone(),
             self.airplay_creds.clone(),
             self.companion_creds.clone(),
