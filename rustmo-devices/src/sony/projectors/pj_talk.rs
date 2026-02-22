@@ -57,7 +57,7 @@ impl Device {
             &SocketAddr::new(self.ip, 53484),
             Duration::from_millis(30000),
         )?;
-        stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        stream.set_read_timeout(Some(Duration::from_millis(5000)))?;
         Ok(stream)
     }
 
