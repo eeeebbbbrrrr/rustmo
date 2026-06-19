@@ -385,7 +385,7 @@ where
     }
 
     #[inline]
-    pub fn lock(&self) -> MutexGuard<T> {
+    pub fn lock(&self) -> MutexGuard<'_, T> {
         self.device.lock()
     }
 }
