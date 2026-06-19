@@ -118,16 +118,16 @@ pub enum VirtualDeviceState {
 ///   1) Alexa will consider a device to be unresponsive if a request takes longer than 5 seconds.
 ///
 ///   2) When Alexa changes the state ("Alexa, turn $device ON/OFF") via `::turn_on()` or `::turn_off`,
-/// it will then immediately check the state via `::check_is_on()`.  If that request doesn't match
-/// what you just told Alexa to do, it will consider the device to be malfunctioning.
+///      it will then immediately check the state via `::check_is_on()`.  If that request doesn't match
+///      what you just told Alexa to do, it will consider the device to be malfunctioning.
 ///
 ///   3) `RustmoServer` provides helper methods for wrapped devices so they can automatically poll
-/// to make sure the desired state matches reality, or to just blindly pretend that the
-/// state change worked.
+///      to make sure the desired state matches reality, or to just blindly pretend that the
+///      state change worked.
 ///
 ///   4) It's best to implement `::turn_on()` and `::turn_off()` to execute as quickly as possible
-/// and use one of the helper methods in `RustmoServer` to provide (slightly) more sophisticated
-/// status verification.
+///      and use one of the helper methods in `RustmoServer` to provide (slightly) more sophisticated
+///      status verification.
 ///
 pub trait VirtualDevice: Sync + Send + 'static {
     /// turn the device on
@@ -200,8 +200,7 @@ pub(crate) mod wrappers {
                 return Ok(VirtualDeviceState::On);
             }
 
-            let result = self.device.check_is_on();
-            result
+            self.device.check_is_on()
         }
     }
 

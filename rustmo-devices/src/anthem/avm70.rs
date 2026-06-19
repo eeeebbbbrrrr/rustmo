@@ -54,7 +54,7 @@ impl Device {
     }
 
     pub fn change_input(&mut self, num: usize) -> Result<(), VirtualDeviceError> {
-        self.send_command(&format!("Z1INP{};", num), None)
+        self.send_command(format!("Z1INP{};", num), None)
             .map(|_| ())
     }
 
@@ -71,7 +71,7 @@ impl Device {
     pub fn set_volume_percent(&mut self, vol: usize) -> Result<(f32, usize), VirtualDeviceError> {
         let mut socket = self.connect()?;
         let pct = self
-            .send_command_with_socket(&mut socket, &format!("Z1PVOL{};", vol), Some("Z1PVOL"))?
+            .send_command_with_socket(&mut socket, format!("Z1PVOL{};", vol), Some("Z1PVOL"))?
             .parse()?;
         let dcbl = Self::validate_response(&mut socket, Some("Z1VOL"))?.parse()?;
         Ok((dcbl, pct))
@@ -80,7 +80,7 @@ impl Device {
     pub fn set_volume_decibel(&mut self, vol: isize) -> Result<(f32, usize), VirtualDeviceError> {
         let mut socket = self.connect()?;
         let dcbl = self
-            .send_command_with_socket(&mut socket, &format!("Z1VOL{};", vol), Some("Z1VOL"))?
+            .send_command_with_socket(&mut socket, format!("Z1VOL{};", vol), Some("Z1VOL"))?
             .parse()?;
         let pct = Self::validate_response(&mut socket, Some("Z1PVOL"))?.parse()?;
         Ok((dcbl, pct))

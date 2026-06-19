@@ -77,7 +77,7 @@ impl Device {
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all(format!("{}\r\n", command).as_ref())?;
 
-        let res = &mut [0 as u8; 32];
+        let res = &mut [0_u8; 32];
         let len = stream.read(res)?;
         let str = CStr::from_bytes_with_nul(&res[..=len])?.to_string_lossy();
 
@@ -106,7 +106,7 @@ impl VirtualDevice for Device {
         let mut stream = TcpStream::connect_timeout(&SocketAddr::new(self.ip, 23), TIMEOUT)?;
         stream.set_read_timeout(Some(Duration::from_millis(1000)))?;
         stream.write_all("#QPW\r\n".as_ref())?;
-        let res = &mut [0 as u8; 32];
+        let res = &mut [0_u8; 32];
         let len = stream.read(res)?;
         let str = CStr::from_bytes_with_nul(&res[..=len])?.to_string_lossy();
 

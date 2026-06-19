@@ -75,8 +75,7 @@ impl SsdpListener {
         response.push_str(
             format!(
                 "LOCATION: http://{}:{}/setup.xml\r\n",
-                device.ip_address.to_string(),
-                device.port
+                device.ip_address, device.port
             )
             .as_str(),
         );

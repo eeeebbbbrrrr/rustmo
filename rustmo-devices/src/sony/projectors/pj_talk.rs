@@ -49,7 +49,7 @@ pub enum PicturePosition {
 // http://www.sonypremiumhome.com/projectors/VPL-VW675ES.php
 impl Device {
     pub fn new(ip: IpAddr) -> Self {
-        Device { ip: ip }
+        Device { ip }
     }
 
     fn open(&self) -> Result<TcpStream, VirtualDeviceError> {
@@ -308,7 +308,7 @@ impl Device {
             0x00,
             0x00,
             which as u8,
-            &[0x00, value.max(50) as u8],
+            &[0x00, value.max(50)],
         ))?;
         Ok(stream.flush()?)
     }
@@ -325,7 +325,7 @@ impl Device {
         let mut buf = [0u8; 32];
         let len = stream.read(&mut buf)?;
 
-        let data = (&buf[..len]).to_vec();
+        let data = buf[..len].to_vec();
         if success == 0 {
             Err(VirtualDeviceError::from(format!("error: {:?}", data)))
         } else {
@@ -361,8 +361,8 @@ impl Device {
 
     fn make_command_bytes(action: u8, command_hi: u8, command_lo: u8, data: &[u8]) -> Vec<u8> {
         let mut bytes = vec![
-            0x02 as u8, // version
-            0x0a,       // category
+            0x02_u8, // version
+            0x0a,    // category
             b'S',
             b'O',
             b'N',

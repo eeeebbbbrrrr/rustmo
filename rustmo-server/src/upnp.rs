@@ -38,13 +38,13 @@ unsafe impl Sync for DeviceHttpServerHandler {}
 unsafe impl Send for DeviceHttpServerHandler {}
 
 impl Handler for DeviceHttpServerHandler {
-    fn handle<'r, 'k>(&'r self, mut request: Request<'r, 'k>, mut response: Response<'r, Fresh>) {
+    fn handle<'r>(&'r self, mut request: Request<'r, '_>, mut response: Response<'r, Fresh>) {
         tracing::info!(
             "UPNP request: http://{}:{}{} from {}",
-            self.device.info.ip_address.to_string(),
+            self.device.info.ip_address,
             self.device.info.port,
-            request.uri.to_string(),
-            request.remote_addr.to_string()
+            request.uri,
+            request.remote_addr
         );
         let body = match request.uri.to_string().as_str() {
             "/setup.xml" => Some(self.handle_setup()),
@@ -73,7 +73,7 @@ impl DeviceHttpServerHandler {
         DeviceHttpServerHandler { device }
     }
 
-    fn handle_basicevent<'r, 'b>(&self, request: &mut Request<'r, 'b>) -> Vec<u8> {
+    fn handle_basicevent(&self, request: &mut Request<'_, '_>) -> Vec<u8> {
         let re = Regex::new("^\".*[#](.*)\"$").unwrap();
         let action =
             String::from_utf8(request.headers.get_raw("SOAPACTION").unwrap()[0].clone()).unwrap();
@@ -96,7 +96,7 @@ impl DeviceHttpServerHandler {
                 tracing::info!(
                     "UPNP get binary state: {} by {}",
                     self.device.info.name,
-                    request.remote_addr.ip().to_string()
+                    request.remote_addr.ip()
                 );
 
                 get_or_set = "Get";
@@ -110,14 +110,14 @@ impl DeviceHttpServerHandler {
                             tracing::info!(
                                 "UPNP turn on: {} by {}",
                                 self.device.info.name,
-                                request.remote_addr.ip().to_string()
+                                request.remote_addr.ip()
                             );
                             self.device.turn_on()
                         } else {
                             tracing::info!(
                                 "PNP turn off: {} by {}",
                                 self.device.info.name,
-                                request.remote_addr.ip().to_string()
+                                request.remote_addr.ip()
                             );
                             self.device.turn_off()
                         }
@@ -129,7 +129,7 @@ impl DeviceHttpServerHandler {
             }
             capture => {
                 tracing::error!("Unknown capture value: /{}/ from /{}/", capture, action);
-                return vec![];
+                return Vec::new();
             }
         };
 
@@ -137,7 +137,7 @@ impl DeviceHttpServerHandler {
             Ok(state) => DeviceHttpServerHandler::make_basicevent_response(state, get_or_set),
             Err(e) => {
                 tracing::error!("Problem with {}: {}", self.device.info.name, e.0);
-                return vec![];
+                vec![]
             }
         }
     }

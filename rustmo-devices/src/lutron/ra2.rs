@@ -326,7 +326,7 @@ impl Ra2MainRepeater {
                 }
                 Ok::<(), VirtualDeviceError>(())
             });
-            std::thread::sleep(timeout.clone());
+            std::thread::sleep(timeout);
             tracing::info!("LUTRON MONITOR RESULT: {:?}", result);
         });
 
@@ -380,8 +380,11 @@ impl Ra2MainRepeater {
     }
 }
 
-impl Project {
-    pub fn into_iter(self) -> impl Iterator<Item = Device> {
+impl IntoIterator for Project {
+    type Item = Device;
+    type IntoIter = std::vec::IntoIter<Device>;
+
+    fn into_iter(self) -> Self::IntoIter {
         let project = self;
         let mut devices = Vec::new();
 
@@ -478,7 +481,7 @@ pub fn output_set(
     percent: f32,
     ttl: Duration,
 ) -> Result<(), VirtualDeviceError> {
-    let mut telnet = login(ip, &uid, &upw)?;
+    let mut telnet = login(ip, uid, upw)?;
     let response = send_command(
         &mut telnet,
         &format!("#OUTPUT,{},1,{},{}", id, percent, ttl.as_secs()),
@@ -488,7 +491,7 @@ pub fn output_set(
 }
 
 pub fn output_get(ip: IpAddr, uid: &str, upw: &str, id: usize) -> Result<f32, VirtualDeviceError> {
-    let mut telnet = login(ip, &uid, &upw)?;
+    let mut telnet = login(ip, uid, upw)?;
     let response = send_command(&mut telnet, &format!("?OUTPUT,{},1", id))?
         .into_iter()
         .filter(|line| line.starts_with(&format!("~OUTPUT,{}", id)))
@@ -588,7 +591,7 @@ where
     D: Deserializer<'de>,
 {
     struct V;
-    impl<'a> Visitor<'a> for V {
+    impl Visitor<'_> for V {
         type Value = bool;
 
         fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
@@ -603,7 +606,7 @@ where
                 "true" => Ok(true),
                 "false" => Ok(false),
                 other => Err(Error::invalid_value(
-                    Unexpected::Str(&other),
+                    Unexpected::Str(other),
                     &"true/false of any case",
                 )),
             }

@@ -24,16 +24,16 @@ pub struct Movie {
 #[derive(FromPrimitive, ToPrimitive, Eq, PartialEq, Copy, Clone, Hash, Ord, PartialOrd, Debug)]
 #[allow(non_camel_case_types)]
 pub enum Screen {
-    Unknown = 00,
-    MovieList = 01,
-    MovieCollections = 02,
-    MovieCovers = 03,
-    ParentalControl = 04,
-    unused_05 = 05,
-    unused_06 = 06,
-    PlayingMovie = 07,
-    SystemStatus = 08,
-    MusicList = 09,
+    Unknown = 0,
+    MovieList = 1,
+    MovieCollections = 2,
+    MovieCovers = 3,
+    ParentalControl = 4,
+    unused_05 = 5,
+    unused_06 = 6,
+    PlayingMovie = 7,
+    SystemStatus = 8,
+    MusicList = 9,
     MusicCovers = 10,
     MusicCollections = 11,
     MusicNowPlaying = 12,
@@ -47,24 +47,24 @@ pub enum Screen {
 
 #[derive(FromPrimitive, ToPrimitive, Eq, PartialEq, Copy, Clone, Hash, Ord, PartialOrd, Debug)]
 pub enum Popup {
-    None = 00,
-    DetailsPage = 01,
-    MovieOverlayStatusPage = 02,
-    MovieOverlay = 03,
+    None = 0,
+    DetailsPage = 1,
+    MovieOverlayStatusPage = 2,
+    MovieOverlay = 3,
 }
 
 #[derive(FromPrimitive, ToPrimitive, Eq, PartialEq, Copy, Clone, Hash, Ord, PartialOrd, Debug)]
 pub enum Dialog {
-    None = 00,
-    KaleidescapeMenu = 01,
-    PasscodeEntry = 02,
-    SimpleQuestion = 03,
-    InformationalMessage = 04,
-    WarningMessage = 05,
-    ErrorMessage = 06,
-    Preplay = 07,
-    ImportWarranty = 08,
-    Keyboard = 09,
+    None = 0,
+    KaleidescapeMenu = 1,
+    PasscodeEntry = 2,
+    SimpleQuestion = 3,
+    InformationalMessage = 4,
+    WarningMessage = 5,
+    ErrorMessage = 6,
+    Preplay = 7,
+    ImportWarranty = 8,
+    Keyboard = 9,
     IPConfiguration = 10,
 }
 
@@ -165,7 +165,7 @@ impl Device {
             .map(|_| ())
     }
 
-    pub fn next(&mut self) -> Result<(), VirtualDeviceError> {
+    pub fn next_track(&mut self) -> Result<(), VirtualDeviceError> {
         let mut socket = self.connect()?;
         self.send_command(&mut socket, 99, 1, "NEXT").map(|_| ())
     }
@@ -287,10 +287,10 @@ impl Device {
         let matches = document.select(&selector);
         let mut socket = self.connect()?;
         for m in matches {
-            let id = m.value().attr("selection_handle").map_or(
-                Err(VirtualDeviceError::new("couldn't select movie id")),
-                |s| Ok(s),
-            )?;
+            let id = m
+                .value()
+                .attr("selection_handle")
+                .ok_or(VirtualDeviceError::new("couldn't select movie id"))?;
             tracing::debug!("KALEDEISCAPE MOVIE ID: {id}");
             let details = self.movie_details_internal(&mut socket, id)?;
 
@@ -298,14 +298,11 @@ impl Device {
                 id: format!("26-0.{id}"),
                 title: details
                     .get("Title")
-                    .map_or(Err(VirtualDeviceError::new("missing Title key")), |s| Ok(s))?
+                    .ok_or(VirtualDeviceError::new("missing Title key"))?
                     .clone(),
                 coverart: details
                     .get("HiRes_cover_URL")
-                    .map_or(
-                        Err(VirtualDeviceError::new("missing HiRes_cover_URL key")),
-                        |s| Ok(s),
-                    )?
+                    .ok_or(VirtualDeviceError::new("missing HiRes_cover_URL key"))?
                     .clone(),
             });
         }
@@ -366,7 +363,7 @@ impl Device {
     }
 
     fn connect(&self) -> Result<TcpStream, VirtualDeviceError> {
-        let socket = TcpStream::connect(&SocketAddr::new(self.ip, 10000))?;
+        let socket = TcpStream::connect(SocketAddr::new(self.ip, 10000))?;
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
         Ok(socket)
     }

@@ -155,7 +155,7 @@ impl Device {
         Ok(self.exec("device_state")? == "DeviceState.Paused")
     }
 
-    fn parse_app_tuple(app: &String) -> Option<(String, String)> {
+    fn parse_app_tuple(app: &str) -> Option<(String, String)> {
         if let Some((name, bundle_id)) = app.split_once(" (") {
             Some((
                 bundle_id.trim_matches(')').to_string(),
@@ -169,11 +169,8 @@ impl Device {
     fn parse_map(input: &str, line_sep: &str) -> BTreeMap<String, String> {
         let mut map = BTreeMap::new();
         for line in input.split(line_sep) {
-            match line.split_once(": ") {
-                Some((k, v)) => {
-                    map.insert(k.trim().to_string(), v.trim().to_string());
-                }
-                None => {}
+            if let Some((k, v)) = line.split_once(": ") {
+                map.insert(k.trim().to_string(), v.trim().to_string());
             }
         }
         map
