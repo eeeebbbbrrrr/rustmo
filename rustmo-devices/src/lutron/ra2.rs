@@ -334,12 +334,35 @@ impl Ra2MainRepeater {
     }
 
     pub fn describe(&self) -> Result<Project, VirtualDeviceError> {
+        self.describe_from_xml(&self.describe_xml()?)
+    }
+
+    pub fn describe_cached<P: AsRef<Path> + Debug>(
+        &self,
+        path: P,
+    ) -> Result<Project, VirtualDeviceError> {
+        match std::fs::read_to_string(path.as_ref()) {
+            Ok(xml) => {
+                tracing::info!("using cached Lutron RA2 project description: {path:?}");
+                self.describe_from_xml(&xml)
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                let xml = self.describe_xml()?;
+                let project = self.describe_from_xml(&xml)?;
+                if let Some(parent) = path.as_ref().parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(path.as_ref(), xml)?;
+                Ok(project)
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn describe_xml(&self) -> Result<String, VirtualDeviceError> {
         let mut telnet = login(self.ip, &self.uid, &self.upw)?;
         tracing::warn!("describing system, may take a few minutes...");
-        let xml = send_command(&mut telnet, "?SYSTEM,12")?.join("");
-        let mut project = serde_xml_rs::from_str::<Project>(&xml)?;
-        project.ra2 = Some(self.clone());
-        Ok(project)
+        Ok(send_command(&mut telnet, "?SYSTEM,12")?.join(""))
     }
 
     pub fn describe_from_file<P: AsRef<Path> + Debug>(
