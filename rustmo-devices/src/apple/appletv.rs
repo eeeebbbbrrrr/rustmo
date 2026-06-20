@@ -1,21 +1,39 @@
-use std::collections::BTreeMap;
-use std::process::Command;
+use std::{collections::BTreeMap, fmt, net::IpAddr, sync::Arc};
 
+use atvrs::{
+    App, AtvError, BlockingAppleTvSession, ClientOptions, DeviceCredentials, DeviceState, Playing,
+    PowerState,
+};
+use parking_lot::Mutex;
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Device {
     id: String,
-    ip: std::net::IpAddr,
+    ip: IpAddr,
     raop_creds: String,
     airplay_creds: String,
     companion_creds: String,
+    session: Arc<Mutex<Option<BlockingAppleTvSession>>>,
+}
+
+impl fmt::Debug for Device {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Device")
+            .field("id", &self.id)
+            .field("ip", &self.ip)
+            .field("raop_creds", &"<redacted>")
+            .field("airplay_creds", &"<redacted>")
+            .field("companion_creds", &"<redacted>")
+            .finish_non_exhaustive()
+    }
 }
 
 impl Device {
     pub fn new<S: Into<String>>(
         id: S,
-        ip: std::net::IpAddr,
+        ip: IpAddr,
         raop_creds: S,
         airplay_creds: S,
         companion_creds: S,
@@ -26,193 +44,215 @@ impl Device {
             raop_creds: raop_creds.into(),
             airplay_creds: airplay_creds.into(),
             companion_creds: companion_creds.into(),
+            session: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
-        Ok(self.exec("power_state")? == "PowerState.On")
+        self.with_session(|session| session.power_state().map(|state| state == PowerState::On))
     }
 
     pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("turn_on")?;
-        Ok(())
+        self.with_session(BlockingAppleTvSession::turn_on)
     }
 
     pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("turn_off")?;
-        Ok(())
+        self.with_session(BlockingAppleTvSession::turn_off)
     }
 
     pub fn launch_app(&self, bundle_id: &str) -> Result<(), VirtualDeviceError> {
-        self.exec(&format!("launch_app={bundle_id}"))?;
-        Ok(())
+        self.with_session(|session| session.launch_app(bundle_id))
     }
 
     pub fn open_url(&self, url: &str) -> Result<(), VirtualDeviceError> {
-        self.exec(&format!("open_url={url}"))?;
-        Ok(())
+        self.with_session(|session| session.open_url(url))
     }
 
     pub fn current_app(&self) -> Result<Option<(String, String)>, VirtualDeviceError> {
-        let map = Self::parse_map(&self.exec("app")?, "\n");
-        if let Some(app) = map.get("App") {
-            Ok(Self::parse_app_tuple(app))
-        } else {
-            Ok(None)
-        }
+        self.with_session(|session| {
+            session
+                .current_app()
+                .map(|app| app.and_then(Self::app_tuple))
+        })
     }
 
     pub fn app_list(&self) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
-        let mut apps = Vec::new();
-        for line in self.exec("app_list")?.split(", ") {
-            let map = Self::parse_map(line, "\n");
-            if let Some(app) = map.get("App") {
-                if let Some(a) = Self::parse_app_tuple(app) {
-                    apps.push(a);
-                }
-            }
-        }
+        let apps: Vec<_> = self.with_session(|session| {
+            session
+                .app_list()
+                .map(|apps| apps.into_iter().filter_map(Self::app_tuple).collect())
+        })?;
         Ok(apps.into_iter())
     }
 
     pub fn up(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("up").map(|_| ())
+        self.with_session(BlockingAppleTvSession::up)
     }
 
     pub fn down(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("down").map(|_| ())
+        self.with_session(BlockingAppleTvSession::down)
     }
 
     pub fn left(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("left").map(|_| ())
+        self.with_session(BlockingAppleTvSession::left)
     }
 
     pub fn right(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("right").map(|_| ())
+        self.with_session(BlockingAppleTvSession::right)
     }
 
     pub fn channel_down(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("channel_down").map(|_| ())
+        self.with_session(BlockingAppleTvSession::channel_down)
     }
 
     pub fn channel_up(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("channel_up").map(|_| ())
+        self.with_session(BlockingAppleTvSession::channel_up)
     }
 
     pub fn home(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("home").map(|_| ())
+        self.with_session(BlockingAppleTvSession::home)
     }
 
     pub fn home_hold(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("home_hold").map(|_| ())
+        self.with_session(BlockingAppleTvSession::home_hold)
     }
 
     pub fn menu(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("menu").map(|_| ())
+        self.with_session(BlockingAppleTvSession::menu)
     }
 
     pub fn top_menu(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("top_menu").map(|_| ())
+        self.with_session(BlockingAppleTvSession::top_menu)
     }
 
     pub fn next(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("next").map(|_| ())
+        self.with_session(BlockingAppleTvSession::next)
     }
 
     pub fn previous(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("previous").map(|_| ())
+        self.with_session(BlockingAppleTvSession::previous)
     }
 
     pub fn play(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("play").map(|_| ())
+        self.with_session(BlockingAppleTvSession::play)
     }
 
     pub fn pause(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("pause").map(|_| ())
+        self.with_session(BlockingAppleTvSession::pause)
     }
 
     pub fn stop(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("stop").map(|_| ())
+        self.with_session(BlockingAppleTvSession::stop)
     }
 
     pub fn select(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("select").map(|_| ())
+        self.with_session(BlockingAppleTvSession::select)
     }
 
     pub fn skip_backward(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("skip_backward").map(|_| ())
+        self.with_session(BlockingAppleTvSession::skip_backward)
     }
 
     pub fn skip_forward(&self) -> Result<(), VirtualDeviceError> {
-        self.exec("skip_forward").map(|_| ())
+        self.with_session(BlockingAppleTvSession::skip_forward)
     }
 
     pub fn playing(&self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
-        Ok(Self::parse_map(&self.exec("playing")?, "\n"))
+        self.with_session(|session| session.playing().map(Self::playing_map))
     }
 
     pub fn paused(&self) -> Result<bool, VirtualDeviceError> {
-        Ok(self.exec("device_state")? == "DeviceState.Paused")
+        self.with_session(|session| {
+            session
+                .device_state()
+                .map(|state| state == DeviceState::Paused)
+        })
     }
 
-    fn parse_app_tuple(app: &str) -> Option<(String, String)> {
-        if let Some((name, bundle_id)) = app.split_once(" (") {
-            Some((
-                bundle_id.trim_matches(')').to_string(),
-                name.trim().to_string(),
-            ))
-        } else {
-            None
+    fn with_session<T>(
+        &self,
+        action: impl FnOnce(&BlockingAppleTvSession) -> Result<T, AtvError>,
+    ) -> Result<T, VirtualDeviceError> {
+        let mut session = self.session.lock();
+        if session.is_none() {
+            *session = Some(
+                BlockingAppleTvSession::connect_host_by_id(
+                    self.ip,
+                    self.id.clone(),
+                    self.credentials(),
+                    ClientOptions::default(),
+                )
+                .map_err(Self::atv_error)?,
+            );
         }
+        action(session.as_ref().expect("session was initialized")).map_err(Self::atv_error)
     }
 
-    fn parse_map(input: &str, line_sep: &str) -> BTreeMap<String, String> {
+    fn atv_error(error: AtvError) -> VirtualDeviceError {
+        VirtualDeviceError::from(format!("appletv: {error}"))
+    }
+
+    fn credentials(&self) -> DeviceCredentials {
+        DeviceCredentials::new()
+            .with_airplay(self.airplay_creds.clone())
+            .with_companion(self.companion_creds.clone())
+            .with_raop(self.raop_creds.clone())
+    }
+
+    fn app_tuple(app: App) -> Option<(String, String)> {
+        app.name.map(|name| (app.identifier, name))
+    }
+
+    fn playing_map(playing: Playing) -> BTreeMap<String, String> {
         let mut map = BTreeMap::new();
-        for line in input.split(line_sep) {
-            if let Some((k, v)) = line.split_once(": ") {
-                map.insert(k.trim().to_string(), v.trim().to_string());
-            }
+        map.insert(
+            "Media type".to_string(),
+            format!("{:?}", playing.media_type),
+        );
+        map.insert(
+            "Device state".to_string(),
+            format!("{:?}", playing.device_state),
+        );
+        if let Some(value) = playing.title {
+            map.insert("Title".to_string(), value);
+        }
+        if let Some(value) = playing.artist {
+            map.insert("Artist".to_string(), value);
+        }
+        if let Some(value) = playing.album {
+            map.insert("Album".to_string(), value);
+        }
+        if let Some(value) = playing.genre {
+            map.insert("Genre".to_string(), value);
+        }
+        if let Some(value) = playing.total_time {
+            map.insert("Total time".to_string(), value.to_string());
+        }
+        if let Some(value) = playing.position {
+            map.insert("Position".to_string(), value.to_string());
+        }
+        if let Some(value) = playing.shuffle {
+            map.insert("Shuffle".to_string(), format!("{value:?}"));
+        }
+        if let Some(value) = playing.repeat {
+            map.insert("Repeat".to_string(), format!("{value:?}"));
+        }
+        if let Some(value) = playing.series_name {
+            map.insert("Series name".to_string(), value);
+        }
+        if let Some(value) = playing.season_number {
+            map.insert("Season number".to_string(), value.to_string());
+        }
+        if let Some(value) = playing.episode_number {
+            map.insert("Episode number".to_string(), value.to_string());
+        }
+        if let Some(value) = playing.content_identifier {
+            map.insert("Content identifier".to_string(), value);
+        }
+        if let Some(value) = playing.itunes_store_identifier {
+            map.insert("iTunes Store identifier".to_string(), value.to_string());
         }
         map
-    }
-
-    fn exec(&self, atvremote_command: &str) -> Result<String, VirtualDeviceError> {
-        tracing::info!("appletv: {}", atvremote_command);
-
-        let output = Command::new("atvremote")
-            .arg("--id")
-            .arg(&self.id)
-            .arg("--scan-hosts")
-            .arg(self.ip.to_string())
-            .arg("--raop-credentials")
-            .arg(&self.raop_creds)
-            .arg("--airplay-credentials")
-            .arg(&self.airplay_creds)
-            .arg("--companion-credentials")
-            .arg(&self.companion_creds)
-            .arg(atvremote_command)
-            .output()
-            .map_err(|e| VirtualDeviceError::from(format!("failed to run atvremote: {e}")))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-
-        if !stderr.is_empty() {
-            tracing::warn!("atvremote stderr: {stderr}");
-        }
-
-        tracing::info!("atvremote response: {stdout}");
-
-        if !output.status.success() {
-            return Err(VirtualDeviceError::from(format!(
-                "atvremote '{}' failed (exit {}): {}",
-                atvremote_command,
-                output.status.code().unwrap_or(-1),
-                if stdout.is_empty() { &stderr } else { &stdout }
-            )));
-        }
-
-        Ok(stdout)
     }
 }
 
