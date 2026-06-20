@@ -1,8 +1,7 @@
 use std::{collections::BTreeMap, fmt, net::IpAddr, sync::Arc};
 
 use atvrs::{
-    App, AtvError, BlockingAppleTvSession, ClientOptions, DeviceCredentials, DeviceState, Playing,
-    PowerState,
+    AtvError, BlockingAppleTvSession, ClientOptions, DeviceCredentials, DeviceState, PowerState,
 };
 use parking_lot::Mutex;
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
@@ -72,15 +71,17 @@ impl Device {
         self.with_session(|session| {
             session
                 .current_app()
-                .map(|app| app.and_then(Self::app_tuple))
+                .map(|app| app.and_then(atvrs::App::into_identifier_and_name))
         })
     }
 
     pub fn app_list(&self) -> Result<impl Iterator<Item = (String, String)>, VirtualDeviceError> {
         let apps: Vec<_> = self.with_session(|session| {
-            session
-                .app_list()
-                .map(|apps| apps.into_iter().filter_map(Self::app_tuple).collect())
+            session.app_list().map(|apps| {
+                apps.into_iter()
+                    .filter_map(atvrs::App::into_identifier_and_name)
+                    .collect()
+            })
         })?;
         Ok(apps.into_iter())
     }
@@ -158,7 +159,7 @@ impl Device {
     }
 
     pub fn playing(&self) -> Result<BTreeMap<String, String>, VirtualDeviceError> {
-        self.with_session(|session| session.playing().map(Self::playing_map))
+        self.with_session(|session| session.playing().map(|playing| playing.pyatv_fields()))
     }
 
     pub fn paused(&self) -> Result<bool, VirtualDeviceError> {
@@ -197,62 +198,6 @@ impl Device {
             .with_airplay(self.airplay_creds.clone())
             .with_companion(self.companion_creds.clone())
             .with_raop(self.raop_creds.clone())
-    }
-
-    fn app_tuple(app: App) -> Option<(String, String)> {
-        app.name.map(|name| (app.identifier, name))
-    }
-
-    fn playing_map(playing: Playing) -> BTreeMap<String, String> {
-        let mut map = BTreeMap::new();
-        map.insert(
-            "Media type".to_string(),
-            format!("{:?}", playing.media_type),
-        );
-        map.insert(
-            "Device state".to_string(),
-            format!("{:?}", playing.device_state),
-        );
-        if let Some(value) = playing.title {
-            map.insert("Title".to_string(), value);
-        }
-        if let Some(value) = playing.artist {
-            map.insert("Artist".to_string(), value);
-        }
-        if let Some(value) = playing.album {
-            map.insert("Album".to_string(), value);
-        }
-        if let Some(value) = playing.genre {
-            map.insert("Genre".to_string(), value);
-        }
-        if let Some(value) = playing.total_time {
-            map.insert("Total time".to_string(), value.to_string());
-        }
-        if let Some(value) = playing.position {
-            map.insert("Position".to_string(), value.to_string());
-        }
-        if let Some(value) = playing.shuffle {
-            map.insert("Shuffle".to_string(), format!("{value:?}"));
-        }
-        if let Some(value) = playing.repeat {
-            map.insert("Repeat".to_string(), format!("{value:?}"));
-        }
-        if let Some(value) = playing.series_name {
-            map.insert("Series name".to_string(), value);
-        }
-        if let Some(value) = playing.season_number {
-            map.insert("Season number".to_string(), value.to_string());
-        }
-        if let Some(value) = playing.episode_number {
-            map.insert("Episode number".to_string(), value.to_string());
-        }
-        if let Some(value) = playing.content_identifier {
-            map.insert("Content identifier".to_string(), value);
-        }
-        if let Some(value) = playing.itunes_store_identifier {
-            map.insert("iTunes Store identifier".to_string(), value.to_string());
-        }
-        map
     }
 }
 
