@@ -244,10 +244,46 @@ pub struct Component {
     component_type: String,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum OutputEvent {
     On { id: usize, percent: f32 },
     Off { id: usize },
+}
+
+fn parse_output_event_line(line: &str) -> Result<Option<OutputEvent>, VirtualDeviceError> {
+    let line = line.trim();
+    if !line.starts_with("~OUTPUT,") {
+        return Ok(None);
+    }
+
+    let mut parts = line.split(',');
+    let _command = parts.next();
+    let Some(id) = parts.next() else {
+        tracing::warn!("ignoring malformed Lutron output event without id: {line}");
+        return Ok(None);
+    };
+    let Some(action) = parts.next() else {
+        tracing::warn!("ignoring malformed Lutron output event without action: {line}");
+        return Ok(None);
+    };
+
+    let id: usize = id.parse()?;
+    let action: usize = action.parse()?;
+    if action != 1 {
+        return Ok(None);
+    }
+
+    let Some(percent) = parts.next() else {
+        tracing::warn!("ignoring malformed Lutron output level event without level: {line}");
+        return Ok(None);
+    };
+    let percent: f32 = percent.parse()?;
+
+    Ok(Some(if percent > 0.0 {
+        OutputEvent::On { id, percent }
+    } else {
+        OutputEvent::Off { id }
+    }))
 }
 
 impl Ra2MainRepeater {
@@ -307,27 +343,24 @@ impl Ra2MainRepeater {
             let result = catch_unwind(|| {
                 let mut telnet = login(ip, &username, &password)?;
                 while let Event::Data(data) = telnet.read()? {
-                    let response = String::from_utf8_lossy(&data).to_string();
-                    if response.starts_with("~OUTPUT") {
-                        let response = response.trim();
-                        tracing::debug!("LUTRON MONITOR LINE: {}", response);
-                        let mut parts = response.split(',');
-                        let _ = parts.next().unwrap();
-                        let id: usize = parts.next().unwrap().parse()?;
-                        let action: usize = parts.next().unwrap().parse()?;
-                        if action == 1 {
-                            tracing::info!("lutron light {id} changed");
-                            let percent: f64 = parts.next().unwrap().parse()?;
-                            sender
-                                .send(if percent > 0.0 {
-                                    OutputEvent::On {
-                                        id,
-                                        percent: percent as f32,
-                                    }
-                                } else {
-                                    OutputEvent::Off { id }
-                                })
-                                .expect("failed to send OutputEvent");
+                    let response = String::from_utf8_lossy(&data);
+                    for line in response.lines() {
+                        tracing::debug!("LUTRON MONITOR LINE: {}", line.trim());
+                        match parse_output_event_line(line) {
+                            Ok(Some(event)) => {
+                                let id = match event {
+                                    OutputEvent::On { id, .. } | OutputEvent::Off { id } => id,
+                                };
+                                tracing::info!("lutron light {id} changed");
+                                sender.send(event).expect("failed to send OutputEvent");
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    "ignoring malformed Lutron monitor line `{}`: {e}",
+                                    line.trim()
+                                );
+                            }
                         }
                     }
                 }
@@ -673,5 +706,51 @@ impl VirtualDevice for Device {
     fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
         self.percent()
             .map(|percent| Some(percent.round().clamp(0.0, 100.0) as u8))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_output_level_events() {
+        assert_eq!(
+            parse_output_event_line("~OUTPUT,59,1,25.50\r\n").unwrap(),
+            Some(OutputEvent::On {
+                id: 59,
+                percent: 25.50
+            })
+        );
+        assert_eq!(
+            parse_output_event_line("~OUTPUT,59,1,0.00\r\n").unwrap(),
+            Some(OutputEvent::Off { id: 59 })
+        );
+    }
+
+    #[test]
+    fn ignores_non_level_output_events() {
+        assert_eq!(
+            parse_output_event_line("~OUTPUT,59,29,3\r\n").unwrap(),
+            None
+        );
+        assert_eq!(parse_output_event_line("GNET> ").unwrap(), None);
+    }
+
+    #[test]
+    fn parses_each_line_in_batched_telnet_data() {
+        let data = "~OUTPUT,59,29,3\r\n~OUTPUT,59,1,100.00\r\n";
+        let events: Vec<_> = data
+            .lines()
+            .filter_map(|line| parse_output_event_line(line).unwrap())
+            .collect();
+
+        assert_eq!(
+            events,
+            vec![OutputEvent::On {
+                id: 59,
+                percent: 100.00
+            }]
+        );
     }
 }
