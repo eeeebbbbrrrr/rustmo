@@ -138,6 +138,28 @@ pub trait VirtualDevice: Sync + Send + 'static {
 
     /// is the device on?
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError>;
+
+    /// can this device be addressed as a dimmable device?
+    fn supports_percent(&self) -> bool {
+        false
+    }
+
+    /// set the device brightness as a percentage.
+    ///
+    /// Non-dimmable devices keep the legacy binary behavior: 0 means off and
+    /// any non-zero value means on.
+    fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        if percent == 0 {
+            self.turn_off()
+        } else {
+            self.turn_on()
+        }
+    }
+
+    /// return the current brightness percentage when the device can report it.
+    fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+        Ok(None)
+    }
 }
 
 pub(crate) mod wrappers {
@@ -201,6 +223,21 @@ pub(crate) mod wrappers {
             }
 
             self.device.check_is_on()
+        }
+
+        fn supports_percent(&self) -> bool {
+            self.device.supports_percent()
+        }
+
+        fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+            let result = self.device.set_percent(percent);
+            self.believed_on.store(percent > 0, Ordering::SeqCst);
+
+            result
+        }
+
+        fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+            self.device.check_percent()
         }
     }
 
@@ -273,6 +310,40 @@ pub(crate) mod wrappers {
         fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
             self.device.check_is_on()
         }
+
+        fn supports_percent(&self) -> bool {
+            self.device.supports_percent()
+        }
+
+        fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+            self.device.set_percent(percent)?;
+
+            let desired_state = if percent == 0 {
+                VirtualDeviceState::Off
+            } else {
+                VirtualDeviceState::On
+            };
+            let mut state = self.device.check_is_on().unwrap_or(match desired_state {
+                VirtualDeviceState::On => VirtualDeviceState::Off,
+                VirtualDeviceState::Off => VirtualDeviceState::On,
+            });
+
+            let mut cnt = 0;
+            while state != desired_state {
+                thread::sleep(Duration::from_millis(400));
+                state = self.device.check_is_on().unwrap_or(state);
+                cnt += 1;
+                if cnt == 10 {
+                    break;
+                }
+            }
+
+            Ok(state)
+        }
+
+        fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+            self.device.check_percent()
+        }
     }
 
     ///
@@ -319,6 +390,27 @@ pub(crate) mod wrappers {
             } else {
                 Ok(VirtualDeviceState::Off)
             }
+        }
+
+        fn supports_percent(&self) -> bool {
+            !self.devices.is_empty() && self.devices.iter().all(|d| d.supports_percent())
+        }
+
+        fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+            for device in &self.devices {
+                device.set_percent(percent)?;
+            }
+
+            self.check_is_on()
+        }
+
+        fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+            let percents = self
+                .devices
+                .iter()
+                .map(|device| device.check_percent())
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(percents.into_iter().flatten().max())
         }
     }
 
@@ -405,6 +497,18 @@ where
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.lock().check_is_on()
     }
+
+    fn supports_percent(&self) -> bool {
+        self.lock().supports_percent()
+    }
+
+    fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.lock().set_percent(percent)
+    }
+
+    fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+        self.lock().check_percent()
+    }
 }
 
 impl VirtualDevice for Box<dyn VirtualDevice> {
@@ -418,5 +522,17 @@ impl VirtualDevice for Box<dyn VirtualDevice> {
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.deref().check_is_on()
+    }
+
+    fn supports_percent(&self) -> bool {
+        self.deref().supports_percent()
+    }
+
+    fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.deref().set_percent(percent)
+    }
+
+    fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+        self.deref().check_percent()
     }
 }

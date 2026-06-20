@@ -8,7 +8,7 @@ use std::thread;
 
 use parking_lot::RwLock;
 use tracing::warn;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 use crate::ssdp::SsdpListener;
 use crate::upnp::*;
@@ -91,6 +91,18 @@ impl RustmoDevice {
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.device.check_is_on()
     }
+
+    fn supports_percent(&self) -> bool {
+        self.device.supports_percent()
+    }
+
+    fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        self.device.set_percent(percent)
+    }
+
+    fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+        self.device.check_percent()
+    }
 }
 
 ///
@@ -133,12 +145,41 @@ impl RustmoServer {
     /// Create a new `RustmoServer` and listen for SSDP requests on the specified network interface
     ///
     pub fn new(interface: IpAddr, starting_port: u16) -> Self {
+        Self::with_hue_bridge_port(interface, starting_port, 0)
+    }
+
+    pub fn with_hue_bridge_port(
+        interface: IpAddr,
+        starting_port: u16,
+        hue_bridge_port: u16,
+    ) -> Self {
         let devices: VirtualDevicesList = Arc::new(RwLock::new(Vec::new()));
+        let hue_bridge = if hue_bridge_port == 0 {
+            tracing::info!("Hue bridge disabled");
+            None
+        } else {
+            let bridge = RustmoDeviceInfo {
+                name: "Rustmo Hue Bridge".to_string(),
+                ip_address: interface,
+                port: 80,
+                uuid: uuid!("2f402f80-da50-11e1-9b23-001788255acc"),
+            };
+            tracing::info!(
+                "configuring Hue bridge bind_port={} advertised_port=80 ip={}",
+                hue_bridge_port,
+                interface
+            );
+            if start_hue_bridge_http_server(bridge.clone(), hue_bridge_port, devices.clone()) {
+                Some(bridge)
+            } else {
+                None
+            }
+        };
         RustmoServer {
             devices: devices.clone(),
             ip_address: interface,
             next_port: starting_port,
-            ssdp_listener: SsdpListener::listen(interface, devices),
+            ssdp_listener: SsdpListener::listen(interface, devices, hue_bridge),
         }
     }
 

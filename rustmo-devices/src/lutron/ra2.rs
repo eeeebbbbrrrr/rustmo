@@ -246,7 +246,7 @@ pub struct Component {
 
 #[derive(Debug, Copy, Clone)]
 pub enum OutputEvent {
-    On { id: usize },
+    On { id: usize, percent: f32 },
     Off { id: usize },
 }
 
@@ -280,13 +280,17 @@ impl Ra2MainRepeater {
     }
 
     pub fn light_state(&self, id: usize) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        output_get(self.ip, &self.uid, &self.upw, id).map(|v| {
+        self.light_percent(id).map(|v| {
             if v > 0.0 {
                 VirtualDeviceState::On
             } else {
                 VirtualDeviceState::Off
             }
         })
+    }
+
+    pub fn light_percent(&self, id: usize) -> Result<f32, VirtualDeviceError> {
+        output_get(self.ip, &self.uid, &self.upw, id)
     }
 
     pub fn monitor_output(
@@ -316,7 +320,10 @@ impl Ra2MainRepeater {
                             let percent: f64 = parts.next().unwrap().parse()?;
                             sender
                                 .send(if percent > 0.0 {
-                                    OutputEvent::On { id }
+                                    OutputEvent::On {
+                                        id,
+                                        percent: percent as f32,
+                                    }
                                 } else {
                                     OutputEvent::Off { id }
                                 })
@@ -455,13 +462,17 @@ impl Device {
     }
 
     pub fn state(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
-        output_get(self.ip, &self.uid, &self.upw, self.id).map(|v| {
+        self.percent().map(|v| {
             if v > 0.0 {
                 VirtualDeviceState::On
             } else {
                 VirtualDeviceState::Off
             }
         })
+    }
+
+    pub fn percent(&self) -> Result<f32, VirtualDeviceError> {
+        output_get(self.ip, &self.uid, &self.upw, self.id)
     }
 
     pub fn name(&self) -> &str {
@@ -643,5 +654,24 @@ impl VirtualDevice for Device {
 
     fn check_is_on(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         self.state()
+    }
+
+    fn supports_percent(&self) -> bool {
+        true
+    }
+
+    fn set_percent(&self, percent: u8) -> Result<VirtualDeviceState, VirtualDeviceError> {
+        if percent == 0 {
+            self.turn_off()?;
+            Ok(VirtualDeviceState::Off)
+        } else {
+            self.turn_on(percent as f32, Duration::from_secs(3))?;
+            Ok(VirtualDeviceState::On)
+        }
+    }
+
+    fn check_percent(&self) -> Result<Option<u8>, VirtualDeviceError> {
+        self.percent()
+            .map(|percent| Some(percent.round().clamp(0.0, 100.0) as u8))
     }
 }
