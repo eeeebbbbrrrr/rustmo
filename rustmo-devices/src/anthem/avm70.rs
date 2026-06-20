@@ -39,6 +39,27 @@ impl Device {
         self.send_command("Z1POW0;", Some("Z1POW")).map(|_| ())
     }
 
+    pub fn cec_enabled(&self) -> Result<bool, VirtualDeviceError> {
+        let enabled: usize = self.send_command("GCCECC?;", Some("GCCECC"))?.parse()?;
+        Ok(enabled == 1)
+    }
+
+    pub fn set_cec_enabled(&mut self, enabled: bool) -> Result<(), VirtualDeviceError> {
+        let value = usize::from(enabled);
+        let actual: usize = self
+            .send_command(format!("GCCECC{};", value), Some("GCCECC"))?
+            .parse()?;
+
+        if actual == value {
+            Ok(())
+        } else {
+            Err(VirtualDeviceError::from(format!(
+                "AVM CEC command returned GCCECC{}, expected GCCECC{}",
+                actual, value
+            )))
+        }
+    }
+
     pub fn inputs(&mut self) -> Result<impl Iterator<Item = (usize, String)>, VirtualDeviceError> {
         let mut socket = self.connect()?;
         let many = self
