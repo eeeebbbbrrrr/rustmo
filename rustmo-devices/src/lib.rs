@@ -13,6 +13,9 @@ pub mod sony;
 pub mod devices {
     pub use crate::anthem::avm70::Device as Avm70;
     pub use crate::apple::appletv::Device as AppleTV;
+    pub use crate::apple::appletv::{
+        AuthMode as AppleTvAuthMode, ProtocolAuth as AppleTvProtocolAuth, RustmoAppleTvConfig,
+    };
     pub use crate::kaleidescape::kscp::Device as Kaleidescape;
     pub use crate::lutron::ra2::Device as Ra2;
     pub use crate::lutron::ra2::Ra2MainRepeater;

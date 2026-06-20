@@ -2,16 +2,95 @@ use std::{collections::BTreeMap, fmt, net::IpAddr, sync::Arc};
 
 use atvrs::{
     AtvError, BlockingAppleTvSession, ClientOptions, DeviceCredentials, DeviceState, PowerState,
+    Protocol,
 };
 use parking_lot::Mutex;
 use rustmo_server::virtual_device::{VirtualDevice, VirtualDeviceError, VirtualDeviceState};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    Stored,
+    Transient,
+    Missing,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProtocolAuth {
+    Stored(String),
+    Transient,
+    Missing,
+}
+
+impl ProtocolAuth {
+    pub fn stored(credentials: impl Into<String>) -> Self {
+        Self::Stored(credentials.into())
+    }
+
+    pub fn transient() -> Self {
+        Self::Transient
+    }
+
+    pub fn missing() -> Self {
+        Self::Missing
+    }
+
+    fn from_export(
+        label: &str,
+        credentials: Option<String>,
+        mode: Option<AuthMode>,
+    ) -> Result<Self, VirtualDeviceError> {
+        match (non_empty(credentials), mode) {
+            (Some(credentials), None | Some(AuthMode::Stored)) => Ok(Self::Stored(credentials)),
+            (Some(_), Some(AuthMode::Transient | AuthMode::Missing)) => Err(Self::invalid_export(
+                label,
+                "auth mode conflicts with stored credentials",
+            )),
+            (None, Some(AuthMode::Transient)) => Ok(Self::Transient),
+            (None, Some(AuthMode::Missing) | None) => Ok(Self::Missing),
+            (None, Some(AuthMode::Stored)) => Err(Self::invalid_export(
+                label,
+                "stored auth is missing credentials",
+            )),
+        }
+    }
+
+    fn apply_to(&self, credentials: &mut DeviceCredentials, protocol: Protocol) {
+        if let Self::Stored(value) = self {
+            credentials.set(protocol, value.clone());
+        }
+    }
+
+    fn debug_label(&self) -> &'static str {
+        match self {
+            Self::Stored(_) => "<redacted>",
+            Self::Transient => "<transient>",
+            Self::Missing => "<missing>",
+        }
+    }
+
+    fn invalid_export(label: &str, reason: &str) -> VirtualDeviceError {
+        VirtualDeviceError::from(format!("appletv: invalid {label} auth: {reason}"))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RustmoAppleTvConfig {
+    pub id: String,
+    pub ip: IpAddr,
+    pub airplay_creds: Option<String>,
+    pub airplay_auth: Option<AuthMode>,
+    pub companion_creds: Option<String>,
+    pub raop_creds: Option<String>,
+    pub raop_auth: Option<AuthMode>,
+}
 
 #[derive(Clone)]
 pub struct Device {
     id: String,
     ip: IpAddr,
-    raop_creds: String,
-    airplay_creds: String,
+    raop_auth: ProtocolAuth,
+    airplay_auth: ProtocolAuth,
     companion_creds: String,
     session: Arc<Mutex<Option<BlockingAppleTvSession>>>,
 }
@@ -22,29 +101,61 @@ impl fmt::Debug for Device {
             .debug_struct("Device")
             .field("id", &self.id)
             .field("ip", &self.ip)
-            .field("raop_creds", &"<redacted>")
-            .field("airplay_creds", &"<redacted>")
+            .field("raop_auth", &self.raop_auth.debug_label())
+            .field("airplay_auth", &self.airplay_auth.debug_label())
             .field("companion_creds", &"<redacted>")
             .finish_non_exhaustive()
     }
 }
 
 impl Device {
-    pub fn new<S: Into<String>>(
-        id: S,
+    pub fn new(
+        id: impl Into<String>,
         ip: IpAddr,
-        raop_creds: S,
-        airplay_creds: S,
-        companion_creds: S,
+        raop_creds: impl Into<String>,
+        airplay_creds: impl Into<String>,
+        companion_creds: impl Into<String>,
+    ) -> Self {
+        Self::with_auth(
+            id,
+            ip,
+            ProtocolAuth::stored(raop_creds),
+            ProtocolAuth::stored(airplay_creds),
+            companion_creds,
+        )
+    }
+
+    pub fn with_auth(
+        id: impl Into<String>,
+        ip: IpAddr,
+        raop_auth: ProtocolAuth,
+        airplay_auth: ProtocolAuth,
+        companion_creds: impl Into<String>,
     ) -> Self {
         Self {
             id: id.into(),
             ip,
-            raop_creds: raop_creds.into(),
-            airplay_creds: airplay_creds.into(),
+            raop_auth,
+            airplay_auth,
             companion_creds: companion_creds.into(),
             session: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn from_rustmo_config(config: RustmoAppleTvConfig) -> Result<Self, VirtualDeviceError> {
+        let companion_creds = non_empty(config.companion_creds)
+            .ok_or_else(|| VirtualDeviceError::from("appletv: missing companion credentials"))?;
+        let airplay_auth =
+            ProtocolAuth::from_export("airplay", config.airplay_creds, config.airplay_auth)?;
+        let raop_auth = ProtocolAuth::from_export("raop", config.raop_creds, config.raop_auth)?;
+
+        Ok(Self::with_auth(
+            config.id,
+            config.ip,
+            raop_auth,
+            airplay_auth,
+            companion_creds,
+        ))
     }
 
     pub fn power_status(&self) -> Result<bool, VirtualDeviceError> {
@@ -194,11 +305,16 @@ impl Device {
     }
 
     fn credentials(&self) -> DeviceCredentials {
-        DeviceCredentials::new()
-            .with_airplay(self.airplay_creds.clone())
-            .with_companion(self.companion_creds.clone())
-            .with_raop(self.raop_creds.clone())
+        let mut credentials = DeviceCredentials::new().with_companion(self.companion_creds.clone());
+        self.airplay_auth
+            .apply_to(&mut credentials, Protocol::AirPlay);
+        self.raop_auth.apply_to(&mut credentials, Protocol::Raop);
+        credentials
     }
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.is_empty())
 }
 
 impl VirtualDevice for Device {
@@ -218,5 +334,69 @@ impl VirtualDevice for Device {
         } else {
             Ok(VirtualDeviceState::Off)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_constructor_populates_all_credentials() {
+        let device = Device::new(
+            "appletv-id",
+            "127.0.0.1".parse().unwrap(),
+            "raop-creds",
+            "airplay-creds",
+            "companion-creds",
+        );
+
+        let credentials = device.credentials();
+        assert_eq!(Some("airplay-creds"), credentials.airplay.as_deref());
+        assert_eq!(Some("companion-creds"), credentials.companion.as_deref());
+        assert_eq!(Some("raop-creds"), credentials.raop.as_deref());
+    }
+
+    #[test]
+    fn rustmo_export_with_transient_auth_only_stores_companion_credentials() {
+        let config: RustmoAppleTvConfig = serde_json::from_str(
+            r#"{
+                "id": "airplay-id",
+                "ip": "127.0.0.1",
+                "airplay_creds": null,
+                "airplay_auth": "transient",
+                "companion_creds": "companion-creds",
+                "raop_creds": null,
+                "raop_auth": "transient"
+            }"#,
+        )
+        .unwrap();
+
+        let device = Device::from_rustmo_config(config).unwrap();
+        let credentials = device.credentials();
+        assert_eq!(None, credentials.airplay.as_deref());
+        assert_eq!(Some("companion-creds"), credentials.companion.as_deref());
+        assert_eq!(None, credentials.raop.as_deref());
+    }
+
+    #[test]
+    fn rustmo_export_rejects_conflicting_transient_and_stored_auth() {
+        let config: RustmoAppleTvConfig = serde_json::from_str(
+            r#"{
+                "id": "airplay-id",
+                "ip": "127.0.0.1",
+                "airplay_creds": "airplay-creds",
+                "airplay_auth": "transient",
+                "companion_creds": "companion-creds",
+                "raop_creds": null,
+                "raop_auth": "transient"
+            }"#,
+        )
+        .unwrap();
+
+        let error = Device::from_rustmo_config(config).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("invalid airplay auth: auth mode conflicts"));
     }
 }
