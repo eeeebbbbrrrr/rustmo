@@ -105,6 +105,7 @@ dependencies = [
  "sha2 0.10.9",
  "srp",
  "symphonia",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
