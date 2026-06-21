@@ -363,8 +363,10 @@ impl Device {
     }
 
     fn connect(&self) -> Result<TcpStream, VirtualDeviceError> {
-        let socket = TcpStream::connect(SocketAddr::new(self.ip, 10000))?;
+        let socket =
+            TcpStream::connect_timeout(&SocketAddr::new(self.ip, 10000), Duration::from_secs(1))?;
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        socket.set_write_timeout(Some(Duration::from_millis(1000)))?;
         Ok(socket)
     }
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt, net::IpAddr, sync::Arc};
+use std::{collections::BTreeMap, fmt, io::ErrorKind, net::IpAddr, sync::Arc};
 
 use atvrs::{
     AtvError, BlockingAppleTvSession, ClientOptions, DeviceCredentials, DeviceState, PowerState,
@@ -283,21 +283,50 @@ impl Device {
 
     fn with_session<T>(
         &self,
-        action: impl FnOnce(&BlockingAppleTvSession) -> Result<T, AtvError>,
+        action: impl Fn(&BlockingAppleTvSession) -> Result<T, AtvError>,
     ) -> Result<T, VirtualDeviceError> {
         let mut session = self.session.lock();
         if session.is_none() {
-            *session = Some(
-                BlockingAppleTvSession::connect_host_by_id(
-                    self.ip,
-                    self.id.clone(),
-                    self.credentials(),
-                    ClientOptions::default(),
-                )
-                .map_err(Self::atv_error)?,
-            );
+            *session = Some(self.connect()?);
         }
-        action(session.as_ref().expect("session was initialized")).map_err(Self::atv_error)
+
+        let result = action(session.as_ref().expect("session was initialized"));
+        if let Err(error) = &result {
+            if Self::should_reconnect(error) {
+                tracing::warn!("reconnecting Apple TV after transport error: {error}");
+                *session = Some(self.connect()?);
+                return action(session.as_ref().expect("session was reinitialized"))
+                    .map_err(Self::atv_error);
+            }
+        }
+
+        result.map_err(Self::atv_error)
+    }
+
+    fn connect(&self) -> Result<BlockingAppleTvSession, VirtualDeviceError> {
+        BlockingAppleTvSession::connect_host_by_id(
+            self.ip,
+            self.id.clone(),
+            self.credentials(),
+            ClientOptions::default(),
+        )
+        .map_err(Self::atv_error)
+    }
+
+    fn should_reconnect(error: &AtvError) -> bool {
+        match error {
+            AtvError::Io(error) => matches!(
+                error.kind(),
+                ErrorKind::BrokenPipe
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::NotConnected
+                    | ErrorKind::TimedOut
+                    | ErrorKind::UnexpectedEof
+            ),
+            AtvError::Timeout => true,
+            _ => false,
+        }
     }
 
     fn atv_error(error: AtvError) -> VirtualDeviceError {
@@ -377,6 +406,26 @@ mod tests {
         assert_eq!(None, credentials.airplay.as_deref());
         assert_eq!(Some("companion-creds"), credentials.companion.as_deref());
         assert_eq!(None, credentials.raop.as_deref());
+    }
+
+    #[test]
+    fn reconnects_after_transport_errors() {
+        let error = AtvError::Io(std::io::Error::from(ErrorKind::BrokenPipe));
+        assert!(Device::should_reconnect(&error));
+
+        let error = AtvError::Io(std::io::Error::from(ErrorKind::UnexpectedEof));
+        assert!(Device::should_reconnect(&error));
+
+        assert!(Device::should_reconnect(&AtvError::Timeout));
+    }
+
+    #[test]
+    fn does_not_reconnect_after_auth_errors() {
+        let error = AtvError::Authentication("bad credentials".to_string());
+        assert!(!Device::should_reconnect(&error));
+
+        let error = AtvError::InvalidCredentials("bad credentials".to_string());
+        assert!(!Device::should_reconnect(&error));
     }
 
     #[test]

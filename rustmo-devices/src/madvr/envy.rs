@@ -87,8 +87,10 @@ impl Device {
             "envy command: {}",
             String::from_utf8_lossy(command.as_ref())
         );
-        let socket = TcpStream::connect(SocketAddr::new(self.ip, 44077))?;
+        let socket =
+            TcpStream::connect_timeout(&SocketAddr::new(self.ip, 44077), Duration::from_secs(1))?;
         socket.set_read_timeout(Some(Duration::from_millis(1000)))?;
+        socket.set_write_timeout(Some(Duration::from_millis(1000)))?;
 
         let mut reader = BufReader::new(socket.try_clone()?);
         let mut writer = LineWriter::new(socket);
