@@ -75,7 +75,11 @@ impl Device {
     }
 
     pub fn change_input(&mut self, num: usize) -> Result<(), VirtualDeviceError> {
-        self.send_command(format!("Z1INP{};", num), None)
+        // wait for the `Z1INPx` echo the AVM sends on a real input change;
+        // fire-and-forget here risks the command being lost when the socket
+        // closes too soon. NOTE: the AVM does not echo when asked to switch
+        // to the input it is already on — callers must not send no-ops.
+        self.send_command(format!("Z1INP{};", num), Some("Z1INP"))
             .map(|_| ())
     }
 

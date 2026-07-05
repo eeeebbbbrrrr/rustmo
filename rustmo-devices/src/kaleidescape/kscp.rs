@@ -96,15 +96,24 @@ impl Device {
 
     pub fn power_state(&self) -> Result<VirtualDeviceState, VirtualDeviceError> {
         let mut socket = self.connect()?;
-        let response = self.send_command(&mut socket, 99, 1, "LEAVE_STANDBY")?;
+        // must be a read-only query; sending LEAVE_STANDBY here (as this used
+        // to do) wakes the player every time its power state is checked
+        let response = match self.send_command(&mut socket, 99, 1, "GET_DEVICE_POWER_STATE") {
+            Ok(response) => response,
+            Err(error) if error.to_string().starts_with("Device is in standby") => {
+                return Ok(VirtualDeviceState::Off)
+            }
+            Err(error) => return Err(error),
+        };
+        // read_line strips the `99/1/000:` prefix, leaving
+        // `DEVICE_POWER_STATE:<power>:<zone>:/<checksum>`
         let mut parts = response.split(':');
-        let _command = parts.next();
-        match parts
-            .next()
-            .ok_or(VirtualDeviceError::from("no power state code"))?
-        {
-            "1" => Ok(VirtualDeviceState::On),
-            _ => Ok(VirtualDeviceState::Off),
+        match (parts.next(), parts.next()) {
+            (Some("DEVICE_POWER_STATE"), Some("1")) => Ok(VirtualDeviceState::On),
+            (Some("DEVICE_POWER_STATE"), Some(_)) => Ok(VirtualDeviceState::Off),
+            _ => Err(VirtualDeviceError::from(format!(
+                "unexpected DEVICE_POWER_STATE response: {response}"
+            ))),
         }
     }
 

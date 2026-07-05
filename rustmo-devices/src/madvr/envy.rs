@@ -18,7 +18,23 @@ impl Device {
 
     pub fn power_on(&self) -> Result<(), VirtualDeviceError> {
         let packet = wake_on_lan::MagicPacket::new(&self.mac);
-        Ok(packet.send()?)
+        // a single broadcast UDP datagram is easily lost; send a small burst
+        let mut sent = false;
+        let mut last_error = None;
+        for attempt in 0..3 {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            match packet.send() {
+                Ok(()) => sent = true,
+                Err(error) => last_error = Some(error),
+            }
+        }
+        match (sent, last_error) {
+            (true, _) => Ok(()),
+            (false, Some(error)) => Err(error.into()),
+            (false, None) => unreachable!("no WoL send was attempted"),
+        }
     }
 
     pub fn power_off(&self) -> Result<(), VirtualDeviceError> {
