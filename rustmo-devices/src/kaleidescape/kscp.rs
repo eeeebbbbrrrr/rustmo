@@ -11,7 +11,12 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct Device {
+    /// the player being controlled (KSCP commands, on-screen UI)
     ip: IpAddr,
+    /// the movie server that hosts the content library's web pages; players
+    /// don't serve `/movies`, so listing falls back to `ip` only when the
+    /// controlled device is itself a server
+    movie_server_ip: Option<IpAddr>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -79,7 +84,17 @@ pub struct UiState {
 #[allow(dead_code)]
 impl Device {
     pub fn new(ip: IpAddr) -> Self {
-        Self { ip }
+        Self {
+            ip,
+            movie_server_ip: None,
+        }
+    }
+
+    pub fn with_movie_server(ip: IpAddr, movie_server_ip: Option<IpAddr>) -> Self {
+        Self {
+            ip,
+            movie_server_ip,
+        }
     }
 
     pub fn enter_standby(&self) -> Result<(), VirtualDeviceError> {
@@ -288,7 +303,7 @@ impl Device {
 
     pub fn list_movies(&self) -> Result<BTreeSet<Movie>, VirtualDeviceError> {
         let mut movies = BTreeSet::new();
-        let url = format!("http://{}/movies", self.ip);
+        let url = format!("http://{}/movies", self.movie_server_ip.unwrap_or(self.ip));
         let result = ureq::get(&url).call()?;
         let body = result.into_string()?;
         let document = Html::parse_document(&body);
